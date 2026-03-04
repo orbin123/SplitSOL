@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "SplitSOL",
+    "slug": "splitsol",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "splitsol",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0E1A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0E1A"
+      },
+      "package": "com.splitsol.app",
+      "permissions": ["CAMERA", "VIBRATE"]
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-camera", { "cameraPermission": "SplitSOL needs camera access to scan QR codes for adding wallet addresses." }]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
