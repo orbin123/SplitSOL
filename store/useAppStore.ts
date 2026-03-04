@@ -8,7 +8,6 @@ import { calculateBalances, simplifyDebts } from '@/utils/calculations';
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // === INITIAL STATE ===
       user: {
         name: '',
         walletAddress: null,
@@ -19,7 +18,6 @@ export const useAppStore = create<AppState>()(
       walletAddress: null,
       walletAuthToken: null,
 
-      // === USER ACTIONS ===
       setUser: (updates) =>
         set((state) => ({
           user: { ...state.user, ...updates },
@@ -34,20 +32,20 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
-      // === WALLET ACTIONS ===
       setWallet: (address, authToken) =>
-        set({
+        set((state) => ({
           walletAddress: address,
           walletAuthToken: authToken || null,
-        }),
+          user: { ...state.user, walletAddress: address },
+        })),
 
       disconnectWallet: () =>
-        set({
+        set((state) => ({
           walletAddress: null,
           walletAuthToken: null,
-        }),
+          user: { ...state.user, walletAddress: null },
+        })),
 
-      // === GROUP ACTIONS ===
       createGroup: (name, emoji) => {
         const id = generateId();
         const currentUser = get().user;
@@ -80,7 +78,6 @@ export const useAppStore = create<AppState>()(
           groups: state.groups.filter((g) => g.id !== groupId),
         })),
 
-      // === MEMBER ACTIONS ===
       addMember: (groupId, name, walletAddress) =>
         set((state) => ({
           groups: state.groups.map((g) =>
@@ -130,7 +127,6 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
-      // === EXPENSE ACTIONS ===
       addExpense: (groupId, expenseData) =>
         set((state) => ({
           groups: state.groups.map((g) =>
@@ -143,7 +139,7 @@ export const useAppStore = create<AppState>()(
                       id: generateId(),
                       createdAt: new Date().toISOString(),
                     },
-                    ...g.expenses,  // Newest first
+                    ...g.expenses,
                   ],
                 }
               : g,
@@ -162,7 +158,6 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
-      // === SETTLEMENT ACTIONS ===
       addSettlement: (settlementData) => {
         const settlement: Settlement = {
           ...settlementData,
@@ -188,7 +183,6 @@ export const useAppStore = create<AppState>()(
           })),
         })),
 
-      // === COMPUTED ===
       getGroup: (groupId) => {
         return get().groups.find((g) => g.id === groupId);
       },
@@ -196,20 +190,23 @@ export const useAppStore = create<AppState>()(
       getBalances: (groupId) => {
         const group = get().groups.find((g) => g.id === groupId);
         if (!group) return [];
-        return calculateBalances(group.expenses, group.members);
+        return calculateBalances(group.expenses, group.members, group.settlements);
       },
 
       getSimplifiedDebts: (groupId) => {
         const group = get().groups.find((g) => g.id === groupId);
         if (!group) return [];
-        const balances = calculateBalances(group.expenses, group.members);
+        const balances = calculateBalances(
+          group.expenses,
+          group.members,
+          group.settlements,
+        );
         return simplifyDebts(balances, group.members);
       },
     }),
     {
       name: 'splitsol-store',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist these fields (not computed functions)
       partialize: (state) => ({
         user: state.user,
         groups: state.groups,

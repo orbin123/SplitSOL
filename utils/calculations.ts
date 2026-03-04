@@ -1,34 +1,32 @@
-import { Expense, Member, Balance, SimplifiedDebt } from '@/store/types';
+import { Expense, Member, Balance, SimplifiedDebt, Settlement } from '@/store/types';
 
 /**
  * Calculate net balances for all members in a group.
+ * Accounts for both expenses and confirmed settlements.
  * Positive = others owe this person.
  * Negative = this person owes others.
  */
 export const calculateBalances = (
   expenses: Expense[],
   members: Member[],
+  settlements?: Settlement[],
 ): Balance[] => {
   const balanceMap: Record<string, number> = {};
 
-  // Initialize all members to 0
   members.forEach((m) => {
     balanceMap[m.id] = 0;
   });
 
-  // Process each expense
   expenses.forEach((expense) => {
     const splitCount = expense.splitAmong.length;
     if (splitCount === 0) return;
 
     const sharePerPerson = expense.amount / splitCount;
 
-    // Payer gets credit for the full amount
     if (balanceMap[expense.paidBy] !== undefined) {
       balanceMap[expense.paidBy] += expense.amount;
     }
 
-    // Each person in the split owes their share
     expense.splitAmong.forEach((memberId) => {
       if (balanceMap[memberId] !== undefined) {
         balanceMap[memberId] -= sharePerPerson;
@@ -36,7 +34,18 @@ export const calculateBalances = (
     });
   });
 
-  // Convert to array with member names
+  if (settlements) {
+    settlements.forEach((s) => {
+      if (s.status !== 'confirmed') return;
+      if (balanceMap[s.from] !== undefined) {
+        balanceMap[s.from] += s.amount;
+      }
+      if (balanceMap[s.to] !== undefined) {
+        balanceMap[s.to] -= s.amount;
+      }
+    });
+  }
+
   return members.map((m) => ({
     memberId: m.id,
     memberName: m.name,
@@ -46,7 +55,6 @@ export const calculateBalances = (
 
 /**
  * Simplify debts to minimize the number of transactions.
- * Uses a greedy algorithm to match largest debtor with largest creditor.
  */
 export const simplifyDebts = (
   balances: Balance[],
@@ -54,7 +62,6 @@ export const simplifyDebts = (
 ): SimplifiedDebt[] => {
   const debts: SimplifiedDebt[] = [];
 
-  // Separate into creditors and debtors
   const creditors: { member: Member; amount: number }[] = [];
   const debtors: { member: Member; amount: number }[] = [];
 
@@ -69,11 +76,9 @@ export const simplifyDebts = (
     }
   });
 
-  // Sort descending by amount
   creditors.sort((a, b) => b.amount - a.amount);
   debtors.sort((a, b) => b.amount - a.amount);
 
-  // Greedy matching
   let i = 0;
   let j = 0;
 
@@ -98,16 +103,10 @@ export const simplifyDebts = (
   return debts;
 };
 
-/**
- * Get total expenses for a group
- */
 export const getTotalExpenses = (expenses: Expense[]): number => {
   return expenses.reduce((sum, exp) => sum + exp.amount, 0);
 };
 
-/**
- * Get expense count by category
- */
 export const getExpensesByCategory = (
   expenses: Expense[],
 ): Record<string, number> => {

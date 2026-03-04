@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatCurrency, timeAgo, truncateAddress } from '@/utils/formatters';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { Settlement, Group, Member } from '@/store/types';
 
 interface ActivityItem extends Settlement {
@@ -89,7 +89,10 @@ export default function Activity() {
         style={styles.card}
         onPress={
           item.txSignature
-            ? () => router.push(`/tx/${item.txSignature}?groupId=${item.groupId}`)
+            ? () =>
+                router.push(
+                  `/tx/${item.txSignature}?groupId=${item.groupId}`,
+                )
             : undefined
         }
       >
@@ -100,7 +103,8 @@ export default function Activity() {
               {fromName} paid {toName}
             </Text>
             <Text style={styles.cardMeta}>
-              {item.groupEmoji} {item.groupName} · {item.settledAt ? timeAgo(item.settledAt) : ''}
+              {item.groupEmoji} {item.groupName} ·{' '}
+              {item.settledAt ? timeAgo(item.settledAt) : ''}
             </Text>
           </View>
           <View style={styles.cardRight}>
@@ -169,6 +173,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: SPACING.lg,
+    paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
     gap: SPACING.sm,
   },
   sectionHeader: {
@@ -217,10 +222,10 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
   },
   statusConfirmed: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
   },
   statusPending: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
   statusText: {
     fontSize: FONT.size.xs,
@@ -251,6 +256,5 @@ const styles = StyleSheet.create({
     color: COLORS.text.accent,
     fontSize: FONT.size.xs,
     fontWeight: FONT.weight.medium,
-    fontFamily: 'monospace',
   },
 });

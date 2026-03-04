@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -14,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatCurrency } from '@/utils/formatters';
 import { getTotalExpenses } from '@/utils/calculations';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { Group } from '@/store/types';
 
 export default function Groups() {
@@ -91,7 +92,7 @@ export default function Groups() {
         onPress={() => router.push('/group/create')}
         activeOpacity={0.8}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Ionicons name="add" size={28} color={COLORS.text.white} />
       </TouchableOpacity>
     </View>
   );
@@ -104,6 +105,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: SPACING.lg,
+    paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
     gap: SPACING.md,
   },
   card: {
@@ -170,11 +172,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
-  },
-  fabText: {
-    color: COLORS.text.primary,
-    fontSize: 28,
-    fontWeight: FONT.weight.bold,
-    lineHeight: 30,
   },
 });

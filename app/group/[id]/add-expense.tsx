@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,28 +7,40 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { formatCurrency } from '@/utils/formatters';
+import { COLORS, GRADIENTS, SPACING, FONT, RADIUS, APP } from '@/utils/constants';
 
 export default function AddExpense() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const group = useAppStore((s) => s.getGroup(id));
   const addExpense = useAppStore((s) => s.addExpense);
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState<string>(
-    group?.members.find((m) => m.isCurrentUser)?.id ?? ''
+    group?.members.find((m) => m.isCurrentUser)?.id ?? '',
   );
   const [splitAmong, setSplitAmong] = useState<string[]>(
-    group?.members.map((m) => m.id) ?? []
+    group?.members.map((m) => m.id) ?? [],
   );
+
+  const parsedAmount = parseFloat(amount) || 0;
+  const splitAmount = useMemo(() => {
+    if (splitAmong.length === 0 || parsedAmount <= 0) return 0;
+    return Math.round((parsedAmount / splitAmong.length) * 100) / 100;
+  }, [parsedAmount, splitAmong.length]);
 
   if (!group) {
     return (
@@ -41,15 +53,14 @@ export default function AddExpense() {
   const toggleSplit = (memberId: string) => {
     setSplitAmong((prev) =>
       prev.includes(memberId)
-        ? prev.filter((id) => id !== memberId)
-        : [...prev, memberId]
+        ? prev.filter((i) => i !== memberId)
+        : [...prev, memberId],
     );
   };
 
   const handleAdd = () => {
     const trimmedDesc = description.trim();
-    const parsedAmount = parseFloat(amount);
-    if (!trimmedDesc || isNaN(parsedAmount) || parsedAmount <= 0) return;
+    if (!trimmedDesc || parsedAmount <= 0) return;
     if (!paidBy || splitAmong.length === 0) return;
 
     addExpense(id, {
@@ -64,112 +75,172 @@ export default function AddExpense() {
   };
 
   const isValid =
-    description.trim() &&
-    parseFloat(amount) > 0 &&
-    paidBy &&
-    splitAmong.length > 0;
+    description.trim() && parsedAmount > 0 && paidBy && splitAmong.length > 0;
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Input
-          label="What's this for?"
-          placeholder="e.g. Dinner, Uber, Groceries"
-          value={description}
-          onChangeText={setDescription}
-          autoFocus
-          maxLength={100}
-        />
+        {/* Amount Card */}
+        <LinearGradient
+          colors={GRADIENTS.purple}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.amountCard}
+        >
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={24}
+              color={COLORS.text.primary}
+            />
+          </TouchableOpacity>
 
-        <Input
-          label="Amount"
-          placeholder="0.00"
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="decimal-pad"
-        />
+          <Text style={styles.amountLabel}>AMOUNT</Text>
+          <View style={styles.amountInputRow}>
+            <Text style={styles.currencySymbol}>{APP.CURRENCY_SYMBOL}</Text>
+            <TextInput
+              style={styles.amountInput}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor={COLORS.text.tertiary}
+              autoFocus
+            />
+          </View>
+          <View style={styles.currencyBadge}>
+            <Text style={styles.currencyText}>INR</Text>
+            <Ionicons
+              name="chevron-down"
+              size={14}
+              color={COLORS.text.secondary}
+            />
+          </View>
+        </LinearGradient>
+
+        {/* Description */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>DESCRIPTION</Text>
+          <Input
+            placeholder="e.g. Dinner, Uber, Groceries"
+            value={description}
+            onChangeText={setDescription}
+            maxLength={100}
+          />
+        </View>
 
         {/* Paid by */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Paid by</Text>
+          <Text style={styles.sectionLabel}>PAID BY</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.memberScroll}
           >
-            {group.members.map((member) => (
-              <TouchableOpacity
-                key={member.id}
-                style={[
-                  styles.memberChip,
-                  paidBy === member.id && styles.memberChipActive,
-                ]}
-                onPress={() => setPaidBy(member.id)}
-                activeOpacity={0.7}
-              >
-                <Avatar name={member.name} size={28} />
-                <Text
+            {group.members.map((member) => {
+              const isActive = paidBy === member.id;
+              return (
+                <TouchableOpacity
+                  key={member.id}
                   style={[
-                    styles.memberChipText,
-                    paidBy === member.id && styles.memberChipTextActive,
+                    styles.memberChip,
+                    isActive && styles.memberChipActive,
                   ]}
-                  numberOfLines={1}
+                  onPress={() => setPaidBy(member.id)}
+                  activeOpacity={0.7}
                 >
-                  {member.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Avatar name={member.name} size={28} />
+                  <Text
+                    style={[
+                      styles.memberChipText,
+                      isActive && styles.memberChipTextActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {member.isCurrentUser ? 'You' : member.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
         {/* Split among */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Split among</Text>
-          <View style={styles.splitGrid}>
+          <Text style={styles.sectionLabel}>SPLIT AMONG</Text>
+          <View style={styles.splitList}>
             {group.members.map((member) => {
               const selected = splitAmong.includes(member.id);
               return (
                 <TouchableOpacity
                   key={member.id}
                   style={[
-                    styles.splitChip,
-                    selected && styles.splitChipActive,
+                    styles.splitRow,
+                    selected && styles.splitRowActive,
                   ]}
                   onPress={() => toggleSplit(member.id)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.checkbox}>
-                    {selected && <View style={styles.checkboxInner} />}
-                  </View>
-                  <Avatar name={member.name} size={24} />
+                  <Avatar name={member.name} size={32} />
                   <Text
                     style={[
-                      styles.splitChipText,
-                      selected && styles.splitChipTextActive,
+                      styles.splitName,
+                      selected && styles.splitNameActive,
                     ]}
                     numberOfLines={1}
                   >
-                    {member.name}
+                    {member.isCurrentUser ? 'You' : member.name}
                   </Text>
+                  <Text style={styles.splitAmount}>
+                    {selected && parsedAmount > 0
+                      ? formatCurrency(splitAmount)
+                      : ''}
+                  </Text>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      selected && styles.checkboxActive,
+                    ]}
+                  >
+                    {selected && (
+                      <Ionicons
+                        name="checkmark"
+                        size={14}
+                        color={COLORS.text.white}
+                      />
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
+      </ScrollView>
 
+      {/* Bottom Button */}
+      <View
+        style={[styles.bottomBar, { paddingBottom: insets.bottom || SPACING.lg }]}
+      >
         <Button
-          title="Add Expense"
+          title="Add Expense →"
+          variant="dark"
+          size="lg"
           onPress={handleAdd}
           disabled={!isValid}
-          size="lg"
+          style={styles.addBtn}
         />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -185,22 +256,79 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 100,
   },
-  content: {
-    padding: SPACING.xxl,
-    gap: SPACING.xxl,
+  scrollContent: {
+    paddingBottom: SPACING.xxl,
   },
 
-  // Sections
-  section: {
-    gap: SPACING.md,
+  amountCard: {
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+    paddingHorizontal: SPACING.xxl,
+    alignItems: 'center',
+    borderBottomLeftRadius: RADIUS.xxl,
+    borderBottomRightRadius: RADIUS.xxl,
   },
-  sectionLabel: {
+  backBtn: {
+    alignSelf: 'flex-start',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  amountLabel: {
+    color: COLORS.text.accent,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+    letterSpacing: 1,
+    marginBottom: SPACING.sm,
+  },
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currencySymbol: {
+    color: COLORS.text.primary,
+    fontSize: 36,
+    fontWeight: FONT.weight.extrabold,
+    marginRight: 4,
+  },
+  amountInput: {
+    color: COLORS.text.primary,
+    fontSize: 36,
+    fontWeight: FONT.weight.extrabold,
+    minWidth: 60,
+    textAlign: 'center',
+  },
+  currencyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+  },
+  currencyText: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
     fontWeight: FONT.weight.medium,
   },
 
-  // Paid by chips
+  section: {
+    paddingHorizontal: SPACING.xxl,
+    marginTop: SPACING.xxl,
+    gap: SPACING.md,
+  },
+  sectionLabel: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+    letterSpacing: 1,
+  },
+
   memberScroll: {
     gap: SPACING.sm,
   },
@@ -211,13 +339,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.bg.tertiary,
+    backgroundColor: COLORS.bg.secondary,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderColor: COLORS.border.default,
   },
   memberChipActive: {
     borderColor: COLORS.bg.accent,
-    backgroundColor: COLORS.bg.secondary,
+    backgroundColor: COLORS.bg.accentSoft,
   },
   memberChipText: {
     color: COLORS.text.secondary,
@@ -229,47 +357,63 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
   },
 
-  // Split checkboxes
-  splitGrid: {
+  splitList: {
     gap: SPACING.sm,
   },
-  splitChip: {
+  splitRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.bg.tertiary,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  splitChipActive: {
-    borderColor: COLORS.bg.accent,
     backgroundColor: COLORS.bg.secondary,
+    borderWidth: 1.5,
+    borderColor: COLORS.border.default,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: COLORS.text.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  splitRowActive: {
+    borderColor: COLORS.bg.success,
+    backgroundColor: 'rgba(16, 185, 129, 0.04)',
   },
-  checkboxInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: COLORS.bg.accent,
-  },
-  splitChipText: {
+  splitName: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.medium,
     flex: 1,
   },
-  splitChipTextActive: {
+  splitNameActive: {
     color: COLORS.text.primary,
+  },
+  splitAmount: {
+    color: COLORS.text.success,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+    minWidth: 60,
+    textAlign: 'right',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: COLORS.bg.success,
+    borderColor: COLORS.bg.success,
+  },
+
+  bottomBar: {
+    paddingHorizontal: SPACING.xxl,
+    paddingTop: SPACING.lg,
+    backgroundColor: COLORS.bg.primary,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border.default,
+  },
+  addBtn: {
+    width: '100%',
+    borderRadius: RADIUS.lg,
   },
 });

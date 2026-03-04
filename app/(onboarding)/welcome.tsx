@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT } from '@/utils/constants';
 
 export default function Welcome() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function Welcome() {
     const trimmed = name.trim();
     if (!trimmed) return;
     completeOnboarding(trimmed);
-    router.replace('/(tabs)/groups');
+    router.replace('/(tabs)/home');
   };
 
   return (

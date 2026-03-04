@@ -71,7 +71,6 @@ export default function TransactionSuccess() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {/* Animated Checkmark */}
         <Animated.View
           style={[
             styles.checkCircle,
@@ -83,7 +82,6 @@ export default function TransactionSuccess() {
           </View>
         </Animated.View>
 
-        {/* Title & Subtitle */}
         <Animated.View
           style={{
             opacity: fadeAnim,
@@ -96,7 +94,6 @@ export default function TransactionSuccess() {
           </Text>
         </Animated.View>
 
-        {/* Signature */}
         <Animated.View
           style={[styles.signatureCard, { opacity: fadeAnim }]}
         >
@@ -109,7 +106,6 @@ export default function TransactionSuccess() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Actions */}
         <Animated.View
           style={[styles.actions, { opacity: fadeAnim }]}
         >
@@ -145,12 +141,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xxl,
   },
 
-  // Checkmark
   checkCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xxl,
@@ -169,7 +164,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // Title
   title: {
     color: COLORS.text.primary,
     fontSize: FONT.size.xxl,
@@ -184,7 +178,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Signature Card
   signatureCard: {
     backgroundColor: COLORS.bg.secondary,
     borderRadius: RADIUS.lg,
@@ -207,7 +200,6 @@ const styles = StyleSheet.create({
     color: COLORS.text.accent,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.semibold,
-    fontFamily: 'monospace',
     textAlign: 'center',
   },
   tapHint: {
@@ -217,7 +209,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Actions
   actions: {
     width: '100%',
     marginTop: SPACING.xxxl,

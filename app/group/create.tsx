@@ -104,8 +104,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg.secondary,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.xxxl,
-    borderWidth: 1,
-    borderColor: COLORS.border.default,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   previewEmoji: {
     fontSize: 48,
@@ -141,7 +144,7 @@ const styles = StyleSheet.create({
   },
   emojiSelected: {
     borderColor: COLORS.bg.accent,
-    backgroundColor: COLORS.bg.secondary,
+    backgroundColor: COLORS.bg.accentSoft,
   },
   emojiText: {
     fontSize: 24,

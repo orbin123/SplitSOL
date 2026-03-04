@@ -1,5 +1,3 @@
-import '@/utils/polyfills';
-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { COLORS } from '@/utils/constants';
@@ -7,7 +5,7 @@ import { COLORS } from '@/utils/constants';
 export default function RootLayout() {
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: COLORS.bg.primary },
@@ -24,13 +22,17 @@ export default function RootLayout() {
           title: 'New Group',
           presentation: 'modal',
         }} />
-        <Stack.Screen name="group/[id]/index" options={{ title: '' }} />
+        <Stack.Screen name="group/[id]/index" options={{
+          title: '',
+          headerShown: false,
+        }} />
         <Stack.Screen name="group/[id]/settle/[settlementId]" options={{
           title: 'Settle Up',
           presentation: 'modal',
         }} />
         <Stack.Screen name="group/[id]/add-expense" options={{
           title: 'Add Expense',
+          headerShown: false,
         }} />
         <Stack.Screen name="group/[id]/add-member" options={{
           title: 'Add Member',

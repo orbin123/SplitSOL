@@ -1,49 +1,36 @@
 import { Tabs } from 'expo-router';
-import { COLORS, FONT } from '@/utils/constants';
-import { Text } from 'react-native';
+import { COLORS } from '@/utils/constants';
+import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
 
 export default function TabLayout() {
   return (
     <Tabs
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarStyle: {
-          backgroundColor: COLORS.bg.secondary,
-          borderTopColor: COLORS.border.default,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        },
-        tabBarActiveTintColor: COLORS.bg.accent,
-        tabBarInactiveTintColor: COLORS.text.tertiary,
-        tabBarLabelStyle: {
-          fontSize: FONT.size.xs,
-          fontWeight: FONT.weight.medium,
-        },
         headerStyle: { backgroundColor: COLORS.bg.primary },
         headerTintColor: COLORS.text.primary,
         headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
-        name="groups"
-        options={{
-          title: 'Groups',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>👥</Text>,
-        }}
+        name="home"
+        options={{ title: 'Home', headerShown: false }}
       />
       <Tabs.Screen
         name="activity"
-        options={{
-          title: 'Activity',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>📋</Text>,
-        }}
+        options={{ title: 'Activity' }}
+      />
+      <Tabs.Screen
+        name="wallet"
+        options={{ title: 'Wallet', headerShown: false }}
       />
       <Tabs.Screen
         name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>👤</Text>,
-        }}
+        options={{ title: 'Profile', headerShown: false }}
+      />
+      <Tabs.Screen
+        name="groups"
+        options={{ href: null }}
       />
     </Tabs>
   );

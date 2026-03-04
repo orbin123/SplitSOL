@@ -12,7 +12,7 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'dark';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   disabled?: boolean;
@@ -30,13 +30,14 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const isDisabled = disabled || loading;
+  const usesLightText = variant === 'primary' || variant === 'danger' || variant === 'dark';
 
   return (
     <TouchableOpacity
       style={[
         styles.base,
-        styles[variant],
-        styles[`size_${size}`],
+        variantStyles[variant],
+        sizeStyles[size],
         isDisabled && styles.disabled,
         style,
       ]}
@@ -45,16 +46,21 @@ export const Button: React.FC<ButtonProps> = ({
       activeOpacity={0.8}
     >
       {loading ? (
-        <ActivityIndicator color={COLORS.text.primary} size="small" />
+        <ActivityIndicator
+          color={usesLightText ? COLORS.text.white : COLORS.text.primary}
+          size="small"
+        />
       ) : (
         <>
           {icon}
-          <Text style={[
-            styles.text,
-            styles[`text_${variant}`],
-            styles[`text_${size}`],
-            icon ? { marginLeft: SPACING.sm } : {},
-          ]}>
+          <Text
+            style={[
+              styles.text,
+              textVariantStyles[variant],
+              textSizeStyles[size],
+              icon ? { marginLeft: SPACING.sm } : {},
+            ]}
+          >
             {title}
           </Text>
         </>
@@ -70,24 +76,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: RADIUS.md,
   },
+  disabled: { opacity: 0.5 },
+  text: { fontWeight: FONT.weight.semibold },
+});
+
+const variantStyles = StyleSheet.create({
   primary: { backgroundColor: COLORS.bg.accent },
   secondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: COLORS.bg.secondary,
     borderWidth: 1.5,
     borderColor: COLORS.border.default,
   },
   danger: { backgroundColor: COLORS.bg.danger },
   ghost: { backgroundColor: 'transparent' },
-  disabled: { opacity: 0.5 },
-  size_sm: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg },
-  size_md: { paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl },
-  size_lg: { paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xxl },
-  text: { fontWeight: FONT.weight.semibold },
-  text_primary: { color: COLORS.text.primary },
-  text_secondary: { color: COLORS.text.secondary },
-  text_danger: { color: COLORS.text.primary },
-  text_ghost: { color: COLORS.text.accent },
-  text_sm: { fontSize: FONT.size.sm },
-  text_md: { fontSize: FONT.size.md },
-  text_lg: { fontSize: FONT.size.lg },
+  dark: { backgroundColor: COLORS.bg.dark, borderRadius: RADIUS.lg },
+});
+
+const sizeStyles = StyleSheet.create({
+  sm: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg },
+  md: { paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl },
+  lg: { paddingVertical: SPACING.lg + 2, paddingHorizontal: SPACING.xxl },
+});
+
+const textVariantStyles = StyleSheet.create({
+  primary: { color: COLORS.text.white },
+  secondary: { color: COLORS.text.primary },
+  danger: { color: COLORS.text.white },
+  ghost: { color: COLORS.text.accent },
+  dark: { color: COLORS.text.white },
+});
+
+const textSizeStyles = StyleSheet.create({
+  sm: { fontSize: FONT.size.sm },
+  md: { fontSize: FONT.size.md },
+  lg: { fontSize: FONT.size.lg },
 });

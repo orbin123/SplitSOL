@@ -47,7 +47,6 @@ export default function AddMember() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Live preview */}
         <View style={styles.preview}>
           <Avatar name={name.trim() || '?'} size={64} />
           <Text style={styles.previewName}>
@@ -74,14 +73,6 @@ export default function AddMember() {
           autoCorrect={false}
         />
 
-        <Button
-          title="QR Scanner"
-          variant="secondary"
-          onPress={() => {}}
-          icon={<Text style={{ fontSize: 16 }}>📷</Text>}
-        />
-
-        {/* Existing members preview */}
         {group.members.length > 0 && (
           <View style={styles.existingSection}>
             <Text style={styles.existingLabel}>
@@ -125,7 +116,6 @@ const styles = StyleSheet.create({
     gap: SPACING.xxl,
   },
 
-  // Preview
   preview: {
     alignItems: 'center',
     gap: SPACING.md,
@@ -136,7 +126,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT.weight.bold,
   },
 
-  // Existing members
   existingSection: {
     gap: SPACING.md,
   },
@@ -156,6 +145,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.bg.secondary,
     borderRadius: RADIUS.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   existingName: {
     color: COLORS.text.primary,
