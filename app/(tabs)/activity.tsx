@@ -100,7 +100,7 @@ export default function Activity() {
           <Avatar name={fromName} size={36} />
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle}>
-              {fromName} paid {toName}
+              {fromName} settled {formatCurrency(item.amount)} with {toName}
             </Text>
             <Text style={styles.cardMeta}>
               {item.groupEmoji} {item.groupName} ·{' '}

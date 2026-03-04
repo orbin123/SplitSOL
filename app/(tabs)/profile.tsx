@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   RefreshControl,
@@ -39,10 +40,24 @@ try {
 export default function Profile() {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
   const walletAddress = useAppStore((s) => s.walletAddress);
   const disconnectWallet = useAppStore((s) => s.disconnectWallet);
   const [balance, setBalance] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(user.name);
+
+  const saveName = () => {
+    const trimmed = draftName.trim();
+    if (trimmed) {
+      setUser({ name: trimmed });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      setDraftName(user.name);
+    }
+    setEditingName(false);
+  };
 
   const fetchBalance = useCallback(async () => {
     if (!walletAddress) {
@@ -93,7 +108,37 @@ export default function Profile() {
       {/* User Header */}
       <View style={styles.header}>
         <Avatar name={user.name || 'Me'} size={80} />
-        <Text style={styles.userName}>{user.name || 'SplitSOL User'}</Text>
+        {editingName ? (
+          <View style={styles.editNameRow}>
+            <TextInput
+              style={styles.editNameInput}
+              value={draftName}
+              onChangeText={setDraftName}
+              autoFocus
+              maxLength={30}
+              returnKeyType="done"
+              onSubmitEditing={saveName}
+              onBlur={saveName}
+              selectTextOnFocus
+            />
+            <TouchableOpacity onPress={saveName} style={styles.editNameBtn}>
+              <Ionicons name="checkmark-circle" size={28} color={COLORS.bg.accent} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.nameRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setDraftName(user.name);
+              setEditingName(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.userName}>{user.name || 'SplitSOL User'}</Text>
+            <Ionicons name="pencil-outline" size={16} color={COLORS.text.tertiary} />
+          </TouchableOpacity>
+        )}
         {walletAddress && (
           <TouchableOpacity onPress={copyAddress} style={styles.addressRow}>
             <View style={styles.dot} />
@@ -226,6 +271,29 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     fontSize: FONT.size.xxl,
     fontWeight: FONT.weight.bold,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  editNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  editNameInput: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.xxl,
+    fontWeight: FONT.weight.bold,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.bg.accent,
+    paddingVertical: SPACING.xs,
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  editNameBtn: {
+    padding: SPACING.xs,
   },
   addressRow: {
     flexDirection: 'row',
