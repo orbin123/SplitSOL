@@ -1,6 +1,9 @@
+import { Buffer } from 'buffer';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { COLORS } from '@/utils/constants';
+
+global.Buffer = global.Buffer || Buffer;
 
 export default function RootLayout() {
   return (

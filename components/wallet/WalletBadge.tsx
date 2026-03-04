@@ -1,9 +1,22 @@
-import { View, Text } from 'react-native';
+import React from 'react';
+import { View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
+import { useAppStore } from '@/store/useAppStore';
+import { COLORS } from '@/utils/constants';
 
-export function WalletBadge() {
+export const WalletBadge: React.FC = () => {
+  const walletAddress = useAppStore((s) => s.walletAddress);
+
+  if (!walletAddress) return null;
+
   return (
     <View>
-      <Text>WalletBadge</Text>
+      <QRCode
+        value={walletAddress}
+        size={200}
+        backgroundColor={COLORS.bg.primary}
+        color={COLORS.text.primary}
+      />
     </View>
   );
-}
+};
