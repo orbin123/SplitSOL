@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +39,7 @@ export default function Wallet() {
       setBalance(await getSOLBalance(walletAddress));
     } catch {
       setBalance(null);
+      Alert.alert('Connection Error', 'Unable to fetch balance. Check your internet connection.');
     }
   }, [walletAddress]);
 

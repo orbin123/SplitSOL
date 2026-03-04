@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
@@ -89,7 +90,10 @@ export default function Groups() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/group/create')}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push('/group/create');
+        }}
         activeOpacity={0.8}
       >
         <Ionicons name="add" size={28} color={COLORS.text.white} />

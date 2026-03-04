@@ -10,6 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -51,6 +52,7 @@ export default function AddExpense() {
   }
 
   const toggleSplit = (memberId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSplitAmong((prev) =>
       prev.includes(memberId)
         ? prev.filter((i) => i !== memberId)
@@ -63,6 +65,7 @@ export default function AddExpense() {
     if (!trimmedDesc || parsedAmount <= 0) return;
     if (!paidBy || splitAmong.length === 0) return;
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     addExpense(id, {
       description: trimmedDesc,
       amount: parsedAmount,
@@ -157,7 +160,10 @@ export default function AddExpense() {
                     styles.memberChip,
                     isActive && styles.memberChipActive,
                   ]}
-                  onPress={() => setPaidBy(member.id)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPaidBy(member.id);
+                  }}
                   activeOpacity={0.7}
                 >
                   <Avatar name={member.name} size={28} />

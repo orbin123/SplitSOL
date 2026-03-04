@@ -53,6 +53,7 @@ export default function Profile() {
       setBalance(await getSOLBalance(walletAddress));
     } catch {
       setBalance(null);
+      Alert.alert('Connection Error', 'Unable to fetch balance. Check your internet connection.');
     }
   }, [walletAddress]);
 
@@ -162,6 +163,7 @@ export default function Profile() {
           <TouchableOpacity
             style={styles.settingsRow}
             onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
               Alert.alert('Disconnect Wallet', 'Are you sure?', [
                 { text: 'Cancel', style: 'cancel' },
                 {

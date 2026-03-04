@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -34,6 +35,7 @@ export default function AddMember() {
   const handleAdd = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     addMember(id, trimmed, walletAddress.trim() || undefined);
     router.back();
   };

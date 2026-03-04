@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, RADIUS } from '@/utils/constants';
 
 interface CardProps {
@@ -13,7 +14,10 @@ export const Card: React.FC<CardProps> = ({ children, onPress, style }) => {
     return (
       <TouchableOpacity
         style={[styles.card, style]}
-        onPress={onPress}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPress();
+        }}
         activeOpacity={0.7}
       >
         {children}

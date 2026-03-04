@@ -7,6 +7,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ export default function Welcome() {
   const handleGetStarted = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     completeOnboarding(trimmed);
     router.replace('/(tabs)/home');
   };

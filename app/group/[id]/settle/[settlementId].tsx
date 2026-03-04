@@ -106,13 +106,19 @@ export default function Settlement() {
         setStatus('failed');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch {
+    } catch (error: any) {
       setStatus('failed');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        'Settlement Failed',
-        'Transaction was rejected or failed. Please try again.',
-      );
+      const msg = error?.message ?? '';
+      if (msg.includes('User rejected') || msg.includes('rejected')) {
+        Alert.alert('Cancelled', 'You rejected the transaction in your wallet.');
+      } else if (msg.includes('insufficient') || msg.includes('Insufficient')) {
+        Alert.alert('Insufficient Funds', "You don't have enough SOL for this transaction and fees.");
+      } else if (msg.includes('timeout') || msg.includes('Timeout')) {
+        Alert.alert('Network Timeout', 'The Solana network is busy. Please try again.');
+      } else {
+        Alert.alert('Settlement Failed', 'Something went wrong. Please try again.');
+      }
     }
   }, [
     walletAddress,

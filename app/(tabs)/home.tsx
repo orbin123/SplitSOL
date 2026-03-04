@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -82,6 +83,7 @@ export default function Home() {
   };
 
   const handleQuickAction = (key: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     switch (key) {
       case 'expense':
         if (groups.length > 0) router.push(`/group/${groups[0].id}/add-expense`);
@@ -116,7 +118,10 @@ export default function Home() {
             {user.name || 'Friend'} 👋
           </Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
+        <TouchableOpacity onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push('/(tabs)/profile');
+        }}>
           <Avatar name={user.name || 'Me'} size={44} />
         </TouchableOpacity>
       </View>
@@ -164,7 +169,10 @@ export default function Home() {
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Your Groups</Text>
         {groups.length > 3 && (
-          <TouchableOpacity onPress={() => router.push('/(tabs)/groups')}>
+          <TouchableOpacity onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/(tabs)/groups');
+          }}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         )}
@@ -179,7 +187,10 @@ export default function Home() {
           </Text>
           <TouchableOpacity
             style={styles.createBtn}
-            onPress={() => router.push('/group/create')}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/group/create');
+            }}
             activeOpacity={0.8}
           >
             <Text style={styles.createBtnText}>Create Group</Text>
@@ -252,7 +263,10 @@ export default function Home() {
       {groups.length > 0 && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push('/group/create')}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/group/create');
+          }}
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={28} color={COLORS.text.white} />

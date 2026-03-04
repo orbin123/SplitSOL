@@ -20,10 +20,14 @@ export const ConnectButton: React.FC = () => {
       setWallet(result.address, result.authToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
-      Alert.alert(
-        'Connection Failed',
-        'Make sure Phantom is installed and try again.',
-      );
+      const msg = error?.message ?? '';
+      if (msg.includes('User rejected') || msg.includes('rejected')) {
+        Alert.alert('Cancelled', 'Wallet connection was cancelled.');
+      } else if (msg.includes('not installed') || msg.includes('No wallet')) {
+        Alert.alert('No Wallet Found', 'Make sure Phantom or another MWA-compatible wallet is installed.');
+      } else {
+        Alert.alert('Connection Failed', 'Make sure Phantom is installed and try again.');
+      }
     } finally {
       setLoading(false);
     }

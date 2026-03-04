@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -111,11 +112,12 @@ export default function GroupDetail() {
           title="Settle"
           variant="primary"
           size="sm"
-          onPress={() =>
+          onPress={() => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             router.push(
               `/group/${id}/settle/${debt.from.id}_${debt.to.id}`,
-            )
-          }
+            );
+          }}
         />
       </View>
     </Card>
@@ -126,7 +128,10 @@ export default function GroupDetail() {
       {/* Custom Header */}
       <View style={styles.headerBar}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
           style={styles.backBtn}
           activeOpacity={0.7}
         >
@@ -155,7 +160,10 @@ export default function GroupDetail() {
         ))}
         <TouchableOpacity
           style={styles.addMemberBtn}
-          onPress={() => router.push(`/group/${id}/add-member`)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/group/${id}/add-member`);
+          }}
           activeOpacity={0.7}
         >
           <Ionicons name="add" size={18} color={COLORS.text.secondary} />
@@ -192,7 +200,10 @@ export default function GroupDetail() {
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'expenses' && styles.tabActive]}
-          onPress={() => setActiveTab('expenses')}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab('expenses');
+          }}
         >
           <Text
             style={[
@@ -205,7 +216,10 @@ export default function GroupDetail() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'balances' && styles.tabActive]}
-          onPress={() => setActiveTab('balances')}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab('balances');
+          }}
         >
           <Text
             style={[
@@ -254,7 +268,10 @@ export default function GroupDetail() {
       {activeTab === 'expenses' && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push(`/group/${id}/add-expense`)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/group/${id}/add-expense`);
+          }}
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={28} color={COLORS.text.white} />
