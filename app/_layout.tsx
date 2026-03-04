@@ -1,5 +1,4 @@
-import { Buffer } from 'buffer';
-global.Buffer = global.Buffer || Buffer;
+import '@/utils/polyfills';
 
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -25,10 +24,19 @@ export default function RootLayout() {
           title: 'New Group',
           presentation: 'modal',
         }} />
-        <Stack.Screen name="group/[id]" options={{ title: '' }} />
+        <Stack.Screen name="group/[id]/index" options={{ title: '' }} />
         <Stack.Screen name="group/[id]/settle/[settlementId]" options={{
           title: 'Settle Up',
           presentation: 'modal',
+        }} />
+        <Stack.Screen name="group/[id]/add-expense" options={{
+          title: 'Add Expense',
+        }} />
+        <Stack.Screen name="group/[id]/add-member" options={{
+          title: 'Add Member',
+        }} />
+        <Stack.Screen name="group/invite/[id]" options={{
+          title: 'Join Group',
         }} />
         <Stack.Screen name="tx/[signature]" options={{
           title: 'Settlement Confirmed',

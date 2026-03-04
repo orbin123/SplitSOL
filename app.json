@@ -13,7 +13,12 @@
         "backgroundColor": "#0A0E1A"
       },
       "package": "com.splitsol.app",
-      "permissions": ["CAMERA", "VIBRATE"]
+      "permissions": [
+        "CAMERA",
+        "VIBRATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -34,6 +39,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "08ef1b5f-5816-4a89-ad9d-8599dce285ae"
+      }
+    },
+    "owner": "orbin790"
   }
 }
