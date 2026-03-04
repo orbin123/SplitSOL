@@ -26,6 +26,10 @@ export default function RootLayout() {
           presentation: 'modal',
         }} />
         <Stack.Screen name="group/[id]" options={{ title: '' }} />
+        <Stack.Screen name="group/[id]/settle/[settlementId]" options={{
+          title: 'Settle Up',
+          presentation: 'modal',
+        }} />
         <Stack.Screen name="tx/[signature]" options={{
           title: 'Settlement Confirmed',
           headerBackVisible: false,

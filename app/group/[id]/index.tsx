@@ -72,7 +72,11 @@ export default function GroupDetail() {
           title="Settle"
           variant="secondary"
           size="sm"
-          onPress={() => {}}
+          onPress={() =>
+            router.push(
+              `/group/${id}/settle/${debt.from.id}_${debt.to.id}`,
+            )
+          }
         />
       </View>
     </Card>
