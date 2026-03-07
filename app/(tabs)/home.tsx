@@ -121,7 +121,7 @@ export default function Home() {
         router.push('/settle' as any);
         break;
       case 'scan':
-        router.push('/contacts/scan' as any);
+        router.push('/members/scan' as any);
         break;
       case 'invite':
         router.push('/invite' as any);

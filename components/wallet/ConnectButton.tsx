@@ -65,7 +65,7 @@ export const ConnectButton: React.FC = () => {
 
   return (
     <Button
-      title="Connect Phantom Wallet"
+      title="Connect Solflare Wallet"
       onPress={handleConnect}
       variant="primary"
     />

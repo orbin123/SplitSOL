@@ -19,26 +19,26 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency, timeAgo, truncateAddress } from '@/utils/formatters';
 import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
 
-export default function ContactDetailScreen() {
+export default function MemberDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAppStore((s) => s.user);
-  const contacts = useAppStore((s) => s.contacts);
+  const members = useAppStore((s) => s.members);
   const groups = useAppStore((s) => s.groups);
   const transactions = useAppStore((s) => s.transactions);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
-  const removeContact = useAppStore((s) => s.removeContact);
+  const removeMemberFromList = useAppStore((s) => s.removeMemberFromList);
 
-  const contact = contacts.find((item) => item.id === id);
+  const member = members.find((item) => item.id === id);
 
   const relatedTransactions = useMemo(() => {
-    if (!contact) return [];
+    if (!member) return [];
 
     return transactions
       .filter((tx) => {
         if (
-          tx.payerWallet !== contact.walletAddress &&
-          tx.receiverWallet !== contact.walletAddress
+          tx.payerWallet !== member.walletAddress &&
+          tx.receiverWallet !== member.walletAddress
         ) {
           return false;
         }
@@ -54,19 +54,19 @@ export default function ContactDetailScreen() {
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
-  }, [contact, transactions, user.walletAddress]);
+  }, [member, transactions, user.walletAddress]);
 
-  if (!contact) {
+  if (!member) {
     return (
       <View style={styles.missingWrap}>
         <EmptyState
           emoji="😵"
-          title="Contact not found"
-          subtitle="This contact may have been removed."
+          title="Member not found"
+          subtitle="This member may have been removed."
           action={
             <Button
-              title="Back to Contacts"
-              onPress={() => router.replace('/contacts' as any)}
+              title="Back to Members"
+              onPress={() => router.replace('/members' as any)}
             />
           }
         />
@@ -75,20 +75,20 @@ export default function ContactDetailScreen() {
   }
 
   const copyAddress = async () => {
-    await Clipboard.setStringAsync(contact.walletAddress);
+    await Clipboard.setStringAsync(member.walletAddress);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Copied', 'Wallet address copied to clipboard.');
   };
 
   const handleRemove = () => {
-    Alert.alert('Remove Contact', `Remove ${contact.name} from your contacts?`, [
+    Alert.alert('Remove Member', `Remove ${member.name} from your members?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          removeContact(contact.id);
-          router.replace('/contacts' as any);
+          removeMemberFromList(member.id);
+          router.replace('/members' as any);
         },
       },
     ]);
@@ -101,27 +101,27 @@ export default function ContactDetailScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Avatar name={contact.name} size={88} />
-        <Text style={styles.name}>{contact.name}</Text>
+        <Avatar name={member.name} size={88} />
+        <Text style={styles.name}>{member.name}</Text>
         <TouchableOpacity
           style={styles.favoritePill}
           activeOpacity={0.75}
-          onPress={() => toggleFavorite(contact.id)}
+          onPress={() => toggleFavorite(member.id)}
         >
           <Ionicons
-            name={contact.isFavorite ? 'star' : 'star-outline'}
+            name={member.isFavorite ? 'star' : 'star-outline'}
             size={18}
-            color={contact.isFavorite ? COLORS.bg.warning : COLORS.text.accent}
+            color={member.isFavorite ? COLORS.bg.warning : COLORS.text.accent}
           />
           <Text style={styles.favoriteText}>
-            {contact.isFavorite ? 'Favorite' : 'Mark Favorite'}
+            {member.isFavorite ? 'Favorite' : 'Mark Favorite'}
           </Text>
         </TouchableOpacity>
       </View>
 
       <Card style={styles.addressCard}>
         <Text style={styles.sectionLabel}>Wallet address</Text>
-        <Text style={styles.fullAddress}>{contact.walletAddress}</Text>
+        <Text style={styles.fullAddress}>{member.walletAddress}</Text>
         <Button
           title="Copy Address"
           onPress={() => {
@@ -136,14 +136,14 @@ export default function ContactDetailScreen() {
       <Card>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Added</Text>
-          <Text style={styles.metaValue}>{timeAgo(contact.addedAt)}</Text>
+          <Text style={styles.metaValue}>{timeAgo(member.addedAt)}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Last transaction</Text>
           <Text style={styles.metaValue}>
-            {contact.lastTransactionAt
-              ? timeAgo(contact.lastTransactionAt)
+            {member.lastTransactionAt
+              ? timeAgo(member.lastTransactionAt)
               : 'No transactions yet'}
           </Text>
         </View>
@@ -162,7 +162,7 @@ export default function ContactDetailScreen() {
           <EmptyState
             emoji="🧾"
             title="No transactions yet"
-            subtitle="Payments and settlements with this contact will show up here."
+            subtitle="Payments and settlements with this member will show up here."
           />
         </Card>
       ) : (
@@ -175,7 +175,7 @@ export default function ContactDetailScreen() {
             <Card key={tx.id} style={styles.txCard}>
               <View style={styles.txHeader}>
                 <Text style={styles.txTitle}>
-                  {youPaid ? 'You paid' : `${contact.name} paid`}
+                  {youPaid ? 'You paid' : `${member.name} paid`}
                 </Text>
                 <View
                   style={[
@@ -204,7 +204,7 @@ export default function ContactDetailScreen() {
       )}
 
       <Button
-        title="Remove Contact"
+        title="Remove Member"
         onPress={handleRemove}
         variant="danger"
         style={styles.removeButton}
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT.weight.semibold,
   },
   txAmount: {
-    color: COLORS.text.accent,
+    color: COLORS.bg.accent,
     fontSize: FONT.size.xl,
     fontWeight: FONT.weight.bold,
   },

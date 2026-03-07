@@ -1,6 +1,6 @@
 # SplitSOL
 
-SplitSOL is a mobile-first group expense app for Solana. It lets friends split shared costs in USDC terms, track who owes what, and settle balances on-chain with Phantom wallet auth and an AutoPay flow that can swap into the right asset when needed.
+SplitSOL is a mobile-first group expense app for Solana. It lets friends split shared costs in USDC terms, track who owes what, and settle balances on-chain with Solflare wallet auth and an AutoPay flow that can swap into the right asset when needed.
 
 Built with Expo, React Native, Expo Router, and Zustand.
 
@@ -10,7 +10,7 @@ Traditional split-bill apps stop at bookkeeping. SplitSOL closes the loop:
 
 - Wallet-based identity instead of username/password onboarding
 - Group expense tracking with simplified balances
-- QR-based contact sharing and member invites
+- QR-based member sharing and member invites
 - On-chain settlement on Solana
 - AutoPay support for direct USDC or swap-assisted payments
 - Mobile-native polish like haptics, empty states, and notifications
@@ -20,7 +20,7 @@ Traditional split-bill apps stop at bookkeeping. SplitSOL closes the loop:
 The intended user journey looks like this:
 
 1. Fresh install
-2. Connect Phantom
+2. Connect Solflare
 3. Choose a display name
 4. Create a group
 5. Add friends by QR
@@ -34,14 +34,14 @@ The intended user journey looks like this:
 
 ### Wallet onboarding
 
-- Phantom-first onboarding flow
+- Solflare-first onboarding flow
 - Wallet session reauthorization
 - Clear handling for wallet rejection and missing-wallet cases
 
 ### Group expense tracking
 
 - Create groups with names and emoji
-- Add members from contacts or QR scan
+- Add members from member list or QR scan
 - Add expenses in USDC terms
 - Auto-calculated balances and simplified debts
 
@@ -57,7 +57,7 @@ The intended user journey looks like this:
 
 - Generate your own QR identity card
 - Scan another user to add them instantly
-- Reuse contacts across groups
+- Reuse members across groups
 
 ### Mobile polish
 
@@ -93,7 +93,7 @@ docs/           Demo and project documentation
 - Node.js
 - npm
 - Expo CLI tooling via `npx`
-- Phantom wallet on a supported mobile device for settlement testing
+- Solflare wallet on a supported mobile device for settlement testing
 
 ### Install
 

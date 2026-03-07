@@ -29,14 +29,14 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="contacts/index" options={{
-          title: 'My Contacts',
+        <Stack.Screen name="members/index" options={{
+          title: 'My Members',
         }} />
-        <Stack.Screen name="contacts/[id]" options={{
-          title: 'Contact',
+        <Stack.Screen name="members/[id]" options={{
+          title: 'Member',
         }} />
-        <Stack.Screen name="contacts/scan" options={{
-          title: 'Scan Contact',
+        <Stack.Screen name="members/scan" options={{
+          title: 'Scan Member',
           headerShown: false,
           presentation: 'fullScreenModal',
         }} />

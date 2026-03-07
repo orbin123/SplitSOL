@@ -16,14 +16,14 @@ export default function Welcome() {
           <Text style={styles.title}>SplitSOL</Text>
           <Text style={styles.tagline}>Split bills. Settle on-chain.</Text>
           <Text style={styles.subtitle}>
-            Connect your Phantom wallet to unlock groups, expenses, and
+            Connect your Solflare wallet to unlock groups, expenses, and
             instant on-chain settlements.
           </Text>
         </View>
 
         <View style={styles.ctaBlock}>
           <Button
-            title="Connect Phantom Wallet"
+            title="Connect Solflare Wallet"
             onPress={() => router.push('/(onboarding)/connect' as any)}
             size="lg"
             style={styles.button}

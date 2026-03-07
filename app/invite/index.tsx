@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { buildContactQrPayload } from '@/utils/contactQr';
+import { buildMemberQrPayload } from '@/utils/memberQr';
 import { truncateAddress } from '@/utils/formatters';
 import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
 
@@ -30,7 +30,7 @@ export default function InviteScreen() {
 
   const qrValue =
     user.name && user.walletAddress
-      ? buildContactQrPayload(user.name, user.walletAddress)
+      ? buildMemberQrPayload(user.name, user.walletAddress)
       : null;
 
   const copyAddress = async () => {

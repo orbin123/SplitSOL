@@ -57,7 +57,7 @@ export default function ConnectScreen() {
         <SplitSolLogo size={92} />
 
         <View style={styles.copyBlock}>
-          <Text style={styles.title}>Connecting to Phantom</Text>
+          <Text style={styles.title}>Connecting to Solflare</Text>
           <Text style={styles.subtitle}>
             We are requesting wallet authorization on {SOLANA.CLUSTER}.
           </Text>
@@ -73,9 +73,9 @@ export default function ConnectScreen() {
                   color={COLORS.text.white}
                 />
               </View>
-              <Text style={styles.statusTitle}>Approve in Phantom</Text>
+              <Text style={styles.statusTitle}>Approve in Solflare</Text>
               <Text style={styles.statusSub}>
-                Switch to Phantom, review the request, and approve to continue.
+                Switch to Solflare, review the request, and approve to continue.
               </Text>
             </>
           ) : (
@@ -91,9 +91,9 @@ export default function ConnectScreen() {
               <Text style={styles.statusSub}>{error ?? 'Please try again.'}</Text>
               {showInstallAction && (
                 <Button
-                  title="Install Phantom"
+                  title="Install Solflare"
                   onPress={() => {
-                    void Linking.openURL('https://phantom.app/download');
+                    void Linking.openURL('https://solflare.onelink.me/WVZY');
                   }}
                   variant="secondary"
                   size="lg"
@@ -118,7 +118,7 @@ export default function ConnectScreen() {
 
         {!loading && error && (
           <Text style={styles.footnote}>
-            If Phantom opened and you tapped reject, the retry button will ask
+            If Solflare opened and you tapped reject, the retry button will ask
             again immediately.
           </Text>
         )}

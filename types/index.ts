@@ -6,7 +6,7 @@ export interface UserProfile {
   createdAt: string;
 }
 
-export interface Contact {
+export interface Member {
   id: string;
   name: string;
   walletAddress: string;
@@ -15,11 +15,11 @@ export interface Contact {
   lastTransactionAt: string | null;
 }
 
-export interface Member {
+export interface GroupMember {
   id: string;
   name: string;
   walletAddress: string | null;
-  contactId: string | null;
+  memberId: string | null;
   isCurrentUser: boolean;
 }
 
@@ -61,7 +61,7 @@ export interface Group {
   id: string;
   name: string;
   emoji: string;
-  members: Member[];
+  members: GroupMember[];
   expenses: Expense[];
   settlements: Settlement[];
   createdAt: string;
@@ -113,14 +113,14 @@ export interface Balance {
 }
 
 export interface SimplifiedDebt {
-  from: Member;
-  to: Member;
+  from: GroupMember;
+  to: GroupMember;
   amount: number;
 }
 
 export interface AppState {
   user: UserProfile;
-  contacts: Contact[];
+  members: Member[];
   groups: Group[];
   transactions: Transaction[];
   notifications: Notification[];
@@ -130,13 +130,13 @@ export interface AppState {
     authToken: string | null,
   ) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
-  addContact: (
-    contact: Omit<Contact, 'id' | 'addedAt' | 'lastTransactionAt'> &
-      Partial<Pick<Contact, 'id' | 'addedAt' | 'lastTransactionAt'>>,
+  addMember: (
+    member: Omit<Member, 'id' | 'addedAt' | 'lastTransactionAt'> &
+      Partial<Pick<Member, 'id' | 'addedAt' | 'lastTransactionAt'>>,
   ) => string;
-  removeContact: (id: string) => void;
+  removeMemberFromList: (id: string) => void;
   toggleFavorite: (id: string) => void;
-  updateContactLastTransaction: (id: string) => void;
+  updateMemberLastTransaction: (id: string) => void;
   addTransaction: (
     tx: Omit<Transaction, 'id' | 'timestamp'> &
       Partial<Pick<Transaction, 'id' | 'timestamp'>>,
@@ -152,13 +152,13 @@ export interface AppState {
   ) => string;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  createGroup: (name: string, emoji: string, contactIds?: string[]) => string;
+  createGroup: (name: string, emoji: string, memberIds?: string[]) => string;
   deleteGroup: (groupId: string) => void;
-  addMember: (
+  addGroupMember: (
     groupId: string,
     name: string,
     walletAddress?: string,
-    contactId?: string | null,
+    memberId?: string | null,
   ) => void;
   updateMemberWallet: (groupId: string, memberId: string, wallet: string) => void;
   removeMember: (groupId: string, memberId: string) => void;

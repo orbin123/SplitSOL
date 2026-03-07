@@ -62,8 +62,8 @@ export default function Settlement() {
   const addSettlement = useAppStore((s) => s.addSettlement);
   const addTransaction = useAppStore((s) => s.addTransaction);
   const addNotification = useAppStore((s) => s.addNotification);
-  const updateContactLastTransaction = useAppStore(
-    (s) => s.updateContactLastTransaction,
+  const updateMemberLastTransaction = useAppStore(
+    (s) => s.updateMemberLastTransaction,
   );
 
   const [fromId, toId] = settlementId?.split('_') ?? [];
@@ -230,8 +230,8 @@ export default function Settlement() {
         },
       });
 
-      if (recipient.contactId) {
-        updateContactLastTransaction(recipient.contactId);
+      if (recipient.memberId) {
+        updateMemberLastTransaction(recipient.memberId);
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -252,7 +252,7 @@ export default function Settlement() {
     getFreshPreparedPayment,
     addSettlement,
     addTransaction,
-    updateContactLastTransaction,
+    updateMemberLastTransaction,
     router,
   ]);
 

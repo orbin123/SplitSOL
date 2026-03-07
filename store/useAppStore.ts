@@ -3,8 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   AppState,
-  Contact,
   Group,
+  GroupMember,
   Member,
   Notification,
   Settlement,
@@ -16,7 +16,8 @@ import { calculateBalances, simplifyDebts } from '@/utils/calculations';
 
 interface LegacyPersistedState {
   user?: Partial<UserProfile> & { onboardingComplete?: boolean };
-  contacts?: Contact[];
+  contacts?: Member[];
+  members?: Member[];
   groups?: Group[];
   transactions?: Transaction[];
   notifications?: Notification[];
@@ -32,22 +33,22 @@ const createInitialUser = (): UserProfile => ({
   createdAt: new Date().toISOString(),
 });
 
-const getContactIdByWallet = (
-  contacts: Contact[],
+const getMemberIdByWallet = (
+  members: Member[],
   walletAddress: string | null | undefined,
 ) => {
   if (!walletAddress) return null;
 
   return (
-    contacts.find((contact) => contact.walletAddress === walletAddress)?.id ?? null
+    members.find((member) => member.walletAddress === walletAddress)?.id ?? null
   );
 };
 
-const createMemberFromContact = (contact: Contact): Member => ({
+const createGroupMemberFromMember = (member: Member): GroupMember => ({
   id: generateId(),
-  name: contact.name,
-  walletAddress: contact.walletAddress,
-  contactId: contact.id,
+  name: member.name,
+  walletAddress: member.walletAddress,
+  memberId: member.id,
   isCurrentUser: false,
 });
 
@@ -55,7 +56,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       user: createInitialUser(),
-      contacts: [],
+      members: [],
       groups: [],
       transactions: [],
       notifications: [],
@@ -78,69 +79,69 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
-      addContact: (contact) => {
-        const existingContact = get().contacts.find(
-          (item) => item.walletAddress === contact.walletAddress,
+      addMember: (member) => {
+        const existingMember = get().members.find(
+          (item) => item.walletAddress === member.walletAddress,
         );
 
-        if (existingContact) {
+        if (existingMember) {
           set((state) => ({
-            contacts: state.contacts.map((item) =>
-              item.id === existingContact.id
+            members: state.members.map((item) =>
+              item.id === existingMember.id
                 ? {
                     ...item,
-                    name: contact.name || item.name,
-                    isFavorite: contact.isFavorite || item.isFavorite,
+                    name: member.name || item.name,
+                    isFavorite: member.isFavorite || item.isFavorite,
                   }
                 : item,
             ),
           }));
 
-          return existingContact.id;
+          return existingMember.id;
         }
 
-        const nextContact: Contact = {
-          id: contact.id ?? generateId(),
-          name: contact.name,
-          walletAddress: contact.walletAddress,
-          isFavorite: contact.isFavorite,
-          addedAt: contact.addedAt ?? new Date().toISOString(),
-          lastTransactionAt: contact.lastTransactionAt ?? null,
+        const nextMember: Member = {
+          id: member.id ?? generateId(),
+          name: member.name,
+          walletAddress: member.walletAddress,
+          isFavorite: member.isFavorite,
+          addedAt: member.addedAt ?? new Date().toISOString(),
+          lastTransactionAt: member.lastTransactionAt ?? null,
         };
 
         set((state) => ({
-          contacts: [nextContact, ...state.contacts],
+          members: [nextMember, ...state.members],
         }));
 
-        return nextContact.id;
+        return nextMember.id;
       },
 
-      removeContact: (id) =>
+      removeMemberFromList: (id) =>
         set((state) => ({
-          contacts: state.contacts.filter((contact) => contact.id !== id),
+          members: state.members.filter((member) => member.id !== id),
           groups: state.groups.map((group) => ({
             ...group,
-            members: group.members.map((member) =>
-              member.contactId === id ? { ...member, contactId: null } : member,
+            members: group.members.map((m) =>
+              m.memberId === id ? { ...m, memberId: null } : m,
             ),
           })),
         })),
 
       toggleFavorite: (id) =>
         set((state) => ({
-          contacts: state.contacts.map((contact) =>
-            contact.id === id
-              ? { ...contact, isFavorite: !contact.isFavorite }
-              : contact,
+          members: state.members.map((member) =>
+            member.id === id
+              ? { ...member, isFavorite: !member.isFavorite }
+              : member,
           ),
         })),
 
-      updateContactLastTransaction: (id) =>
+      updateMemberLastTransaction: (id) =>
         set((state) => ({
-          contacts: state.contacts.map((contact) =>
-            contact.id === id
-              ? { ...contact, lastTransactionAt: new Date().toISOString() }
-              : contact,
+          members: state.members.map((member) =>
+            member.id === id
+              ? { ...member, lastTransactionAt: new Date().toISOString() }
+              : member,
           ),
         })),
 
@@ -226,18 +227,18 @@ export const useAppStore = create<AppState>()(
           })),
         })),
 
-      createGroup: (name, emoji, contactIds = []) => {
+      createGroup: (name, emoji, memberIds = []) => {
         const id = generateId();
-        const { user, contacts } = get();
-        const selectedContacts = contactIds
-          .map((contactId) => contacts.find((contact) => contact.id === contactId))
-          .filter((contact): contact is Contact => Boolean(contact));
+        const { user, members } = get();
+        const selectedMembers = memberIds
+          .map((memberId) => members.find((member) => member.id === memberId))
+          .filter((member): member is Member => Boolean(member));
 
-        const selfMember: Member = {
+        const selfGroupMember: GroupMember = {
           id: generateId(),
           name: user.name || 'Me',
           walletAddress: user.walletAddress,
-          contactId: getContactIdByWallet(contacts, user.walletAddress),
+          memberId: getMemberIdByWallet(members, user.walletAddress),
           isCurrentUser: true,
         };
 
@@ -246,10 +247,10 @@ export const useAppStore = create<AppState>()(
           name,
           emoji,
           members: [
-            selfMember,
-            ...selectedContacts
-              .filter((contact) => contact.walletAddress !== user.walletAddress)
-              .map(createMemberFromContact),
+            selfGroupMember,
+            ...selectedMembers
+              .filter((member) => member.walletAddress !== user.walletAddress)
+              .map(createGroupMemberFromMember),
           ],
           expenses: [],
           settlements: [],
@@ -282,7 +283,7 @@ export const useAppStore = create<AppState>()(
           groups: state.groups.filter((group) => group.id !== groupId),
         })),
 
-      addMember: (groupId, name, walletAddress, contactId = null) =>
+      addGroupMember: (groupId, name, walletAddress, memberId = null) =>
         set((state) => {
           const shouldNotifyCurrentUser =
             walletAddress === state.user.walletAddress ||
@@ -299,9 +300,9 @@ export const useAppStore = create<AppState>()(
                         id: generateId(),
                         name,
                         walletAddress: walletAddress ?? null,
-                        contactId:
-                          contactId ??
-                          getContactIdByWallet(state.contacts, walletAddress ?? null),
+                        memberId:
+                          memberId ??
+                          getMemberIdByWallet(state.members, walletAddress ?? null),
                         isCurrentUser: false,
                       },
                     ],
@@ -328,18 +329,18 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      updateMemberWallet: (groupId, memberId, wallet) =>
+      updateMemberWallet: (groupId, groupMemberId, wallet) =>
         set((state) => ({
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
                   ...group,
                   members: group.members.map((member) =>
-                    member.id === memberId
+                    member.id === groupMemberId
                       ? {
                           ...member,
                           walletAddress: wallet,
-                          contactId: getContactIdByWallet(state.contacts, wallet),
+                          memberId: getMemberIdByWallet(state.members, wallet),
                         }
                       : member,
                   ),
@@ -348,13 +349,13 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
-      removeMember: (groupId, memberId) =>
+      removeMember: (groupId, groupMemberId) =>
         set((state) => ({
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
                   ...group,
-                  members: group.members.filter((member) => member.id !== memberId),
+                  members: group.members.filter((member) => member.id !== groupMemberId),
                 }
               : group,
           ),
@@ -446,11 +447,11 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'splitsol-store',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         user: state.user,
-        contacts: state.contacts,
+        members: state.members,
         groups: state.groups,
         transactions: state.transactions,
         notifications: state.notifications,
@@ -472,7 +473,7 @@ export const useAppStore = create<AppState>()(
             createdAt:
               legacyState.user?.createdAt ?? new Date().toISOString(),
           },
-          contacts: legacyState.contacts ?? [],
+          members: legacyState.members ?? legacyState.contacts ?? [],
           groups: legacyState.groups ?? [],
           transactions: legacyState.transactions ?? [],
           notifications: legacyState.notifications ?? [],

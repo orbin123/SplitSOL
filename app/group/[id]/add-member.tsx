@@ -16,18 +16,18 @@ import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QRScanner } from '@/components/ui/QRScanner';
-import { SplitSolQrPayload } from '@/utils/contactQr';
+import { SplitSolQrPayload } from '@/utils/memberQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
 export default function AddMember() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const group = useAppStore((s) => s.getGroup(id));
-  const contacts = useAppStore((s) => s.contacts);
-  const addContact = useAppStore((s) => s.addContact);
+  const members = useAppStore((s) => s.members);
   const addMember = useAppStore((s) => s.addMember);
+  const addGroupMember = useAppStore((s) => s.addGroupMember);
   const user = useAppStore((s) => s.user);
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [scannerVisible, setScannerVisible] = useState(false);
 
   if (!group) {
@@ -43,18 +43,18 @@ export default function AddMember() {
       .map((member) => member.walletAddress)
       .filter((wallet): wallet is string => Boolean(wallet)),
   );
-  const existingContactIds = new Set(
+  const existingMemberIds = new Set(
     group.members
-      .map((member) => member.contactId)
-      .filter((contactId): contactId is string => Boolean(contactId)),
+      .map((member) => member.memberId)
+      .filter((memberId): memberId is string => Boolean(memberId)),
   );
 
-  const availableContacts = useMemo(() => {
-    return [...contacts]
+  const availableMembers = useMemo(() => {
+    return [...members]
       .filter(
-        (contact) =>
-          !existingContactIds.has(contact.id) &&
-          !existingWallets.has(contact.walletAddress),
+        (member) =>
+          !existingMemberIds.has(member.id) &&
+          !existingWallets.has(member.walletAddress),
       )
       .sort((a, b) => {
         if (a.isFavorite !== b.isFavorite) {
@@ -63,31 +63,31 @@ export default function AddMember() {
 
         return a.name.localeCompare(b.name);
       });
-  }, [contacts, existingContactIds, existingWallets]);
+  }, [members, existingMemberIds, existingWallets]);
 
-  const toggleSelectedContact = (contactId: string) => {
-    setSelectedContactIds((current) =>
-      current.includes(contactId)
-        ? current.filter((id) => id !== contactId)
-        : [...current, contactId],
+  const toggleSelectedMember = (memberId: string) => {
+    setSelectedMemberIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId],
     );
   };
 
   const handleAddSelected = () => {
-    if (selectedContactIds.length === 0) return;
+    if (selectedMemberIds.length === 0) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    selectedContactIds.forEach((contactId) => {
-      const contact = contacts.find((item) => item.id === contactId);
-      if (!contact) return;
-      addMember(id, contact.name, contact.walletAddress, contact.id);
+    selectedMemberIds.forEach((memberId) => {
+      const member = members.find((item) => item.id === memberId);
+      if (!member) return;
+      addGroupMember(id, member.name, member.walletAddress, member.id);
     });
 
     router.back();
   };
 
-  const handleScanContact = (payload: SplitSolQrPayload) => {
+  const handleScanMember = (payload: SplitSolQrPayload) => {
     if (payload.wallet === user.walletAddress) {
       Alert.alert("Can't add yourself", 'You are already in this group.');
       return false;
@@ -98,21 +98,21 @@ export default function AddMember() {
       return false;
     }
 
-    const existingContact = contacts.find(
-      (contact) => contact.walletAddress === payload.wallet,
+    const existingMember = members.find(
+      (member) => member.walletAddress === payload.wallet,
     );
-    const contactId =
-      existingContact?.id ??
-      addContact({
+    const memberId =
+      existingMember?.id ??
+      addMember({
         name: payload.name,
         walletAddress: payload.wallet,
         isFavorite: false,
       });
 
-    addMember(id, payload.name, payload.wallet, contactId);
+    addGroupMember(id, payload.name, payload.wallet, memberId);
     setScannerVisible(false);
     Alert.alert(
-      existingContact ? 'Member added' : 'Contact added',
+      existingMember ? 'Member added' : 'Member added',
       `${payload.name} was added to the group.`,
       [{ text: 'OK', onPress: () => router.back() }],
     );
@@ -129,7 +129,7 @@ export default function AddMember() {
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>Add Members</Text>
           <Text style={styles.previewSub}>
-            Choose from contacts or scan a new SplitSOL member.
+            Choose from members or scan a new SplitSOL member.
           </Text>
         </View>
 
@@ -158,7 +158,7 @@ export default function AddMember() {
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionTitle}>Add From Contacts</Text>
+            <Text style={styles.sectionTitle}>Add From Members</Text>
             <Text style={styles.sectionSub}>
               Favorites are pinned to the top
             </Text>
@@ -171,12 +171,12 @@ export default function AddMember() {
           />
         </View>
 
-        {availableContacts.length === 0 ? (
+        {availableMembers.length === 0 ? (
           <Card style={styles.emptyCard}>
             <EmptyState
               emoji="➕"
-              title="No available contacts"
-              subtitle="Everyone in your contact book is already in this group, or you need to scan someone new."
+              title="No available members"
+              subtitle="Everyone in your member list is already in this group, or you need to scan someone new."
               action={
                 <Button
                   title="Scan New Member"
@@ -186,29 +186,29 @@ export default function AddMember() {
             />
           </Card>
         ) : (
-          <View style={styles.contactList}>
-            {availableContacts.map((contact) => {
-              const isSelected = selectedContactIds.includes(contact.id);
+          <View style={styles.memberList}>
+            {availableMembers.map((member) => {
+              const isSelected = selectedMemberIds.includes(member.id);
 
               return (
                 <TouchableOpacity
-                  key={contact.id}
+                  key={member.id}
                   style={[
-                    styles.contactRow,
-                    isSelected && styles.contactRowSelected,
+                    styles.memberRow,
+                    isSelected && styles.memberRowSelected,
                   ]}
                   activeOpacity={0.75}
-                  onPress={() => toggleSelectedContact(contact.id)}
+                  onPress={() => toggleSelectedMember(member.id)}
                 >
-                  <Avatar name={contact.name} size={44} />
+                  <Avatar name={member.name} size={44} />
                   <View style={styles.memberCopy}>
-                    <View style={styles.contactNameRow}>
-                      <Text style={styles.existingName}>{contact.name}</Text>
-                      {contact.isFavorite && (
+                    <View style={styles.memberNameRow}>
+                      <Text style={styles.existingName}>{member.name}</Text>
+                      {member.isFavorite && (
                         <Text style={styles.favoriteBadge}>Favorite</Text>
                       )}
                     </View>
-                    <Text style={styles.existingMeta}>{contact.walletAddress}</Text>
+                    <Text style={styles.existingMeta}>{member.walletAddress}</Text>
                   </View>
                   <View
                     style={[
@@ -226,12 +226,12 @@ export default function AddMember() {
 
         <Button
           title={
-            selectedContactIds.length > 0
-              ? `Add ${selectedContactIds.length} Member${selectedContactIds.length === 1 ? '' : 's'}`
-              : 'Select Contacts to Add'
+            selectedMemberIds.length > 0
+              ? `Add ${selectedMemberIds.length} Member${selectedMemberIds.length === 1 ? '' : 's'}`
+              : 'Select Members to Add'
           }
           onPress={handleAddSelected}
-          disabled={selectedContactIds.length === 0}
+          disabled={selectedMemberIds.length === 0}
           size="lg"
         />
       </ScrollView>
@@ -243,9 +243,9 @@ export default function AddMember() {
         presentationStyle="fullScreen"
       >
         <QRScanner
-          onScan={handleScanContact}
+          onScan={handleScanMember}
           onClose={() => setScannerVisible(false)}
-          hint="Scan a SplitSOL contact to add them to this group"
+          hint="Scan a SplitSOL member to add them to this group"
         />
       </Modal>
     </>
@@ -333,10 +333,10 @@ const styles = StyleSheet.create({
     minHeight: 220,
     justifyContent: 'center',
   },
-  contactList: {
+  memberList: {
     gap: SPACING.sm,
   },
-  contactRow: {
+  memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
@@ -351,11 +351,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  contactRowSelected: {
+  memberRowSelected: {
     borderColor: COLORS.bg.accent,
     backgroundColor: COLORS.bg.accentSoft,
   },
-  contactNameRow: {
+  memberNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,

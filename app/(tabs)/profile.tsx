@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { useAppStore } from '@/store/useAppStore';
-import { buildContactQrPayload } from '@/utils/contactQr';
+import { buildMemberQrPayload } from '@/utils/memberQr';
 import { APP, COLORS, FONT, RADIUS, SOLANA, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { truncateAddress } from '@/utils/formatters';
 import { disconnectWalletSession } from '@/utils/mwa';
@@ -35,7 +35,7 @@ export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
-  const contacts = useAppStore((s) => s.contacts);
+  const members = useAppStore((s) => s.members);
   const setUser = useAppStore((s) => s.setUser);
   const setNotificationsEnabled = useAppStore((s) => s.setNotificationsEnabled);
 
@@ -121,9 +121,9 @@ export default function Profile() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const contactQrValue =
+  const memberQrValue =
     user.name && walletAddress
-      ? buildContactQrPayload(user.name, walletAddress)
+      ? buildMemberQrPayload(user.name, walletAddress)
       : null;
 
   return (
@@ -216,11 +216,11 @@ export default function Profile() {
         </View>
       </Card>
 
-      {walletAddress && QRCode && contactQrValue && (
+      {walletAddress && QRCode && memberQrValue && (
         <Card style={styles.qrCard}>
           <Text style={styles.sectionTitle}>Your QR Code</Text>
           <QRCode
-            value={contactQrValue}
+            value={memberQrValue}
             size={184}
             color={COLORS.text.primary}
             backgroundColor="transparent"
@@ -241,11 +241,11 @@ export default function Profile() {
         </Card>
       )}
 
-      <Card style={styles.actionCard} onPress={() => router.push('/contacts' as any)}>
+      <Card style={styles.actionCard} onPress={() => router.push('/members' as any)}>
         <View style={styles.rowCopy}>
-          <Text style={styles.sectionTitle}>My Contacts</Text>
+          <Text style={styles.sectionTitle}>My Members</Text>
           <Text style={styles.sectionSub}>
-            {contacts.length} contact{contacts.length === 1 ? '' : 's'}
+            {members.length} member{members.length === 1 ? '' : 's'}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />

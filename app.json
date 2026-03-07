@@ -4,7 +4,7 @@
     "slug": "splitsol",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/splitsol-icon1.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "splitsol",
     "android": {

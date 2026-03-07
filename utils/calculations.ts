@@ -1,4 +1,4 @@
-import { Expense, Member, Balance, SimplifiedDebt, Settlement } from '@/store/types';
+import { Expense, GroupMember, Balance, SimplifiedDebt, Settlement } from '@/types';
 
 /**
  * Calculate net balances for all members in a group.
@@ -8,7 +8,7 @@ import { Expense, Member, Balance, SimplifiedDebt, Settlement } from '@/store/ty
  */
 export const calculateBalances = (
   expenses: Expense[],
-  members: Member[],
+  members: GroupMember[],
   settlements?: Settlement[],
 ): Balance[] => {
   const balanceMap: Record<string, number> = {};
@@ -58,12 +58,12 @@ export const calculateBalances = (
  */
 export const simplifyDebts = (
   balances: Balance[],
-  members: Member[],
+  members: GroupMember[],
 ): SimplifiedDebt[] => {
   const debts: SimplifiedDebt[] = [];
 
-  const creditors: { member: Member; amount: number }[] = [];
-  const debtors: { member: Member; amount: number }[] = [];
+  const creditors: { member: GroupMember; amount: number }[] = [];
+  const debtors: { member: GroupMember; amount: number }[] = [];
 
   balances.forEach((b) => {
     const member = members.find((m) => m.id === b.memberId);

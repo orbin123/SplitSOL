@@ -5,7 +5,7 @@ Use this script for the Phase 11 demo video. Keep the pace brisk and avoid pause
 ## Setup
 
 - Start from a fresh install with no local app data.
-- Make sure Phantom is installed on the Android device.
+- Make sure Solflare is installed on the Android device.
 - Have a second demo identity ready for the friend perspective.
 - Use a wallet state that can complete the AutoPay flow on demand.
 
@@ -14,10 +14,10 @@ Use this script for the Phase 11 demo video. Keep the pace brisk and avoid pause
 1. Open the app from a fresh install.
    Say: "This is a clean install of SplitSOL."
 
-2. Tap `Connect Phantom Wallet`.
-   Say: "SplitSOL uses Phantom for wallet-based identity and settlement."
+2. Tap `Connect Solflare Wallet`.
+   Say: "SplitSOL uses Solflare for wallet-based identity and settlement."
 
-3. Approve the wallet request in Phantom.
+3. Approve the wallet request in Solflare.
    Say: "After approval, onboarding continues automatically."
 
 4. Enter a display name and continue.
@@ -30,7 +30,7 @@ Use this script for the Phase 11 demo video. Keep the pace brisk and avoid pause
    Say: "I'll create a dinner group for tonight's split."
 
 7. Add a friend via QR scan.
-   Say: "Contacts can be added instantly by scanning a SplitSOL QR code."
+   Say: "Members can be added instantly by scanning a SplitSOL QR code."
 
 8. Add a split:
    Say: "Now I'll add Pizza for 20 USDC, paid by me, split equally."

@@ -58,7 +58,7 @@ export default function UsernameScreen() {
           <Text style={styles.title}>Choose your display name</Text>
           <Text style={styles.subtitle}>
             This is how you will appear in groups, settlements, and your
-            contacts.
+            members.
           </Text>
         </View>
 

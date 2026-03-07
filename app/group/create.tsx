@@ -19,7 +19,7 @@ import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QRScanner } from '@/components/ui/QRScanner';
-import { SplitSolQrPayload } from '@/utils/contactQr';
+import { SplitSolQrPayload } from '@/utils/memberQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
 const EMOJI_OPTIONS = [
@@ -30,65 +30,65 @@ const EMOJI_OPTIONS = [
 export default function CreateGroup() {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
-  const contacts = useAppStore((s) => s.contacts);
-  const addContact = useAppStore((s) => s.addContact);
+  const members = useAppStore((s) => s.members);
+  const addMember = useAppStore((s) => s.addMember);
   const createGroup = useAppStore((s) => s.createGroup);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('🍕');
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [scannerVisible, setScannerVisible] = useState(false);
 
-  const sortedContacts = useMemo(() => {
-    return [...contacts].sort((a, b) => {
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a, b) => {
       if (a.isFavorite !== b.isFavorite) {
         return a.isFavorite ? -1 : 1;
       }
 
       return a.name.localeCompare(b.name);
     });
-  }, [contacts]);
+  }, [members]);
 
   const handleCreate = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const groupId = createGroup(trimmed, emoji, selectedContactIds);
+    const groupId = createGroup(trimmed, emoji, selectedMemberIds);
     router.back();
     router.push(`/group/${groupId}`);
   };
 
-  const toggleSelectedContact = (contactId: string) => {
-    setSelectedContactIds((current) =>
-      current.includes(contactId)
-        ? current.filter((id) => id !== contactId)
-        : [...current, contactId],
+  const toggleSelectedMember = (memberId: string) => {
+    setSelectedMemberIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId],
     );
   };
 
-  const handleScanContact = (payload: SplitSolQrPayload) => {
+  const handleScanMember = (payload: SplitSolQrPayload) => {
     if (payload.wallet === user.walletAddress) {
       Alert.alert("Can't add yourself", 'You are already included in the group.');
       return false;
     }
 
-    const existingContact = contacts.find(
-      (contact) => contact.walletAddress === payload.wallet,
+    const existingMember = members.find(
+      (member) => member.walletAddress === payload.wallet,
     );
 
-    const contactId =
-      existingContact?.id ??
-      addContact({
+    const memberId =
+      existingMember?.id ??
+      addMember({
         name: payload.name,
         walletAddress: payload.wallet,
         isFavorite: false,
       });
 
-    setSelectedContactIds((current) =>
-      current.includes(contactId) ? current : [...current, contactId],
+    setSelectedMemberIds((current) =>
+      current.includes(memberId) ? current : [...current, memberId],
     );
     setScannerVisible(false);
     Alert.alert(
-      existingContact ? 'Contact selected' : 'Contact added',
+      existingMember ? 'Member selected' : 'Member added',
       `${payload.name} will be included in this group.`,
     );
     return true;
@@ -110,8 +110,8 @@ export default function CreateGroup() {
               {name.trim() || 'Group Name'}
             </Text>
             <Text style={styles.previewMeta}>
-              {1 + selectedContactIds.length} member
-              {selectedContactIds.length === 0 ? '' : 's'} total
+              {1 + selectedMemberIds.length} member
+              {selectedMemberIds.length === 0 ? '' : 's'} total
             </Text>
           </View>
 
@@ -150,7 +150,7 @@ export default function CreateGroup() {
               <View>
                 <Text style={styles.sectionTitle}>Add Members</Text>
                 <Text style={styles.sectionSub}>
-                  Pick contacts or scan someone new.
+                  Pick members or scan someone new.
                 </Text>
               </View>
               <Button
@@ -172,43 +172,43 @@ export default function CreateGroup() {
               </View>
             </Card>
 
-            {sortedContacts.length === 0 ? (
-              <Card style={styles.emptyContactsCard}>
+            {sortedMembers.length === 0 ? (
+              <Card style={styles.emptyMembersCard}>
                 <EmptyState
                   emoji="👥"
-                  title="No contacts yet"
-                  subtitle="Scan a SplitSOL QR code to add contacts and include them in this group."
+                  title="No members yet"
+                  subtitle="Scan a SplitSOL QR code to add members and include them in this group."
                   action={
                     <Button
-                      title="Scan First Contact"
+                      title="Scan First Member"
                       onPress={() => setScannerVisible(true)}
                     />
                   }
                 />
               </Card>
             ) : (
-              sortedContacts.map((contact) => {
-                const isSelected = selectedContactIds.includes(contact.id);
+              sortedMembers.map((member) => {
+                const isSelected = selectedMemberIds.includes(member.id);
 
                 return (
                   <TouchableOpacity
-                    key={contact.id}
+                    key={member.id}
                     style={[
-                      styles.contactRow,
-                      isSelected && styles.contactRowSelected,
+                      styles.memberRow,
+                      isSelected && styles.memberRowSelected,
                     ]}
                     activeOpacity={0.75}
-                    onPress={() => toggleSelectedContact(contact.id)}
+                    onPress={() => toggleSelectedMember(member.id)}
                   >
-                    <Avatar name={contact.name} size={44} />
+                    <Avatar name={member.name} size={44} />
                     <View style={styles.memberCopy}>
-                      <View style={styles.contactNameRow}>
-                        <Text style={styles.memberName}>{contact.name}</Text>
-                        {contact.isFavorite && (
+                      <View style={styles.memberNameRow}>
+                        <Text style={styles.memberName}>{member.name}</Text>
+                        {member.isFavorite && (
                           <Text style={styles.favoriteBadge}>Favorite</Text>
                         )}
                       </View>
-                      <Text style={styles.memberMeta}>{contact.walletAddress}</Text>
+                      <Text style={styles.memberMeta}>{member.walletAddress}</Text>
                     </View>
                     <View
                       style={[
@@ -239,9 +239,9 @@ export default function CreateGroup() {
         presentationStyle="fullScreen"
       >
         <QRScanner
-          onScan={handleScanContact}
+          onScan={handleScanMember}
           onClose={() => setScannerVisible(false)}
-          hint="Scan a SplitSOL contact to add them to this group"
+          hint="Scan a SplitSOL member to add them to this group"
         />
       </Modal>
     </>
@@ -360,11 +360,11 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.xs,
     fontWeight: FONT.weight.semibold,
   },
-  emptyContactsCard: {
+  emptyMembersCard: {
     minHeight: 240,
     justifyContent: 'center',
   },
-  contactRow: {
+  memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
@@ -379,11 +379,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  contactRowSelected: {
+  memberRowSelected: {
     borderColor: COLORS.bg.accent,
     backgroundColor: COLORS.bg.accentSoft,
   },
-  contactNameRow: {
+  memberNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,

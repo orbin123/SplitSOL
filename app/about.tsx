@@ -32,7 +32,7 @@ export default function AboutScreen() {
         <Text style={styles.cardTitle}>Wallet-Based Auth</Text>
         <Text style={styles.cardBody}>
           Instead of usernames and passwords, SplitSOL uses your Solana wallet to
-          identify you. Connecting Phantom authorizes the app to know your wallet
+          identify you. Connecting Solflare authorizes the app to know your wallet
           address and request transaction approvals when you settle up.
         </Text>
       </Card>
@@ -55,9 +55,9 @@ export default function AboutScreen() {
             onPress={() => Linking.openURL('https://solana.com')}
           />
           <Button
-            title="Phantom"
+            title="Solflare"
             variant="secondary"
-            onPress={() => Linking.openURL('https://phantom.app')}
+            onPress={() => Linking.openURL('https://solflare.com')}
           />
         </View>
       </Card>

@@ -50,16 +50,16 @@ export const getWalletConnectionErrorCopy = (error: unknown) => {
   if (isUserRejectedError(error)) {
     return {
       title: 'Connection Rejected',
-      message: 'Approve the wallet request in Phantom to continue.',
+      message: 'Approve the wallet request in Solflare to continue.',
       showInstallAction: false,
     };
   }
 
   if (isWalletInstallError(error)) {
     return {
-      title: 'Phantom Required',
+      title: 'Solflare Required',
       message:
-        'Phantom is not available on this device. Install it, then come back and try again.',
+        'Solflare is not available on this device. Install it, then come back and try again.',
       showInstallAction: true,
     };
   }
@@ -129,7 +129,7 @@ export const getSettlementExecutionErrorCopy = (error: unknown) => {
   if (isUserRejectedError(error)) {
     return {
       title: 'Payment Cancelled',
-      message: 'You rejected the transaction in Phantom.',
+      message: 'You rejected the transaction in Solflare.',
     };
   }
 

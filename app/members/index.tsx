@@ -19,23 +19,23 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { truncateAddress } from '@/utils/formatters';
 import { COLORS, FONT, RADIUS, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
 
-export default function ContactsScreen() {
+export default function MembersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const contacts = useAppStore((s) => s.contacts);
+  const members = useAppStore((s) => s.members);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
-  const removeContact = useAppStore((s) => s.removeContact);
+  const removeMemberFromList = useAppStore((s) => s.removeMemberFromList);
   const [query, setQuery] = useState('');
 
-  const filteredContacts = useMemo(() => {
+  const filteredMembers = useMemo(() => {
     const search = query.trim().toLowerCase();
 
-    return [...contacts]
-      .filter((contact) => {
+    return [...members]
+      .filter((member) => {
         if (!search) return true;
         return (
-          contact.name.toLowerCase().includes(search) ||
-          contact.walletAddress.toLowerCase().includes(search)
+          member.name.toLowerCase().includes(search) ||
+          member.walletAddress.toLowerCase().includes(search)
         );
       })
       .sort((a, b) => {
@@ -45,15 +45,15 @@ export default function ContactsScreen() {
 
         return a.name.localeCompare(b.name);
       });
-  }, [contacts, query]);
+  }, [members, query]);
 
   const confirmRemove = (id: string, name: string) => {
-    Alert.alert('Remove Contact', `Remove ${name} from your contacts?`, [
+    Alert.alert('Remove Member', `Remove ${name} from your members?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => removeContact(id),
+        onPress: () => removeMemberFromList(id),
       },
     ]);
   };
@@ -69,7 +69,7 @@ export default function ContactsScreen() {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search contacts"
+            placeholder="Search members"
             placeholderTextColor={COLORS.text.tertiary}
             value={query}
             onChangeText={setQuery}
@@ -80,23 +80,23 @@ export default function ContactsScreen() {
       </View>
 
       <FlatList
-        data={filteredContacts}
+        data={filteredMembers}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: TAB_BAR_HEIGHT + SPACING.xxxl },
-          filteredContacts.length === 0 && styles.emptyContent,
+          filteredMembers.length === 0 && styles.emptyContent,
         ]}
         ListEmptyComponent={
-          contacts.length === 0 ? (
+          members.length === 0 ? (
             <EmptyState
               emoji="👥"
-              title="No contacts yet"
-              subtitle="Scan another SplitSOL member&apos;s QR code to build your contact book."
+              title="No members yet"
+              subtitle="Scan another SplitSOL member&apos;s QR code to build your member list."
               action={
                 <Button
-                  title="Add Contact"
-                  onPress={() => router.push('/contacts/scan' as any)}
+                  title="Add Member"
+                  onPress={() => router.push('/members/scan' as any)}
                 />
               }
             />
@@ -112,7 +112,7 @@ export default function ContactsScreen() {
           <TouchableOpacity
             style={styles.row}
             activeOpacity={0.75}
-            onPress={() => router.push(`/contacts/${item.id}` as any)}
+            onPress={() => router.push(`/members/${item.id}` as any)}
             onLongPress={() => confirmRemove(item.id, item.name)}
           >
             <Avatar name={item.name} size={48} />
@@ -145,10 +145,10 @@ export default function ContactsScreen() {
       <TouchableOpacity
         style={[styles.fab, { bottom: Math.max(insets.bottom, 20) + 88 }]}
         activeOpacity={0.85}
-        onPress={() => router.push('/contacts/scan' as any)}
+        onPress={() => router.push('/members/scan' as any)}
       >
         <Ionicons name="qr-code-outline" size={22} color={COLORS.text.white} />
-        <Text style={styles.fabText}>Add Contact</Text>
+        <Text style={styles.fabText}>Add Member</Text>
       </TouchableOpacity>
     </View>
   );

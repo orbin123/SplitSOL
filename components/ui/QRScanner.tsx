@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, FONT, SPACING } from '@/utils/constants';
 import { Button } from '@/components/ui/Button';
-import { SplitSolQrPayload, parseSplitSolQrPayload } from '@/utils/contactQr';
+import { SplitSolQrPayload, parseSplitSolQrPayload } from '@/utils/memberQr';
 
 interface QRScannerProps {
   onScan: (payload: SplitSolQrPayload) => boolean | Promise<boolean>;

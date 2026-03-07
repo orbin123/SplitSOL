@@ -3,13 +3,13 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
 import { QRScanner } from '@/components/ui/QRScanner';
-import { SplitSolQrPayload } from '@/utils/contactQr';
+import { SplitSolQrPayload } from '@/utils/memberQr';
 
-export default function ScanContactScreen() {
+export default function ScanMemberScreen() {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
-  const contacts = useAppStore((s) => s.contacts);
-  const addContact = useAppStore((s) => s.addContact);
+  const members = useAppStore((s) => s.members);
+  const addMember = useAppStore((s) => s.addMember);
   const [isHandling, setIsHandling] = useState(false);
 
   const handleScan = (payload: SplitSolQrPayload) => {
@@ -20,36 +20,36 @@ export default function ScanContactScreen() {
     if (payload.wallet === user.walletAddress) {
       Alert.alert(
         'This is your QR code',
-        'You cannot add yourself as a contact.',
+        'You cannot add yourself as a member.',
         [{ text: 'OK', onPress: () => setIsHandling(false) }],
       );
       return false;
     }
 
-    const existingContact = contacts.find(
-      (contact) => contact.walletAddress === payload.wallet,
+    const existingMember = members.find(
+      (member) => member.walletAddress === payload.wallet,
     );
-    const contactId =
-      existingContact?.id ??
-      addContact({
+    const memberId =
+      existingMember?.id ??
+      addMember({
         name: payload.name,
         walletAddress: payload.wallet,
         isFavorite: false,
       });
 
     Alert.alert(
-      existingContact ? 'Already in contacts' : 'Contact added',
-      existingContact
-        ? `${payload.name} is already in your contact book.`
-        : `${payload.name} has been added to your contacts.`,
+      existingMember ? 'Already in members' : 'Member added',
+      existingMember
+        ? `${payload.name} is already in your member list.`
+        : `${payload.name} has been added to your members.`,
       [
         {
-          text: 'View Contact',
-          onPress: () => router.replace(`/contacts/${contactId}` as any),
+          text: 'View Member',
+          onPress: () => router.replace(`/members/${memberId}` as any),
         },
         {
           text: 'Done',
-          onPress: () => router.replace('/contacts' as any),
+          onPress: () => router.replace('/members' as any),
         },
       ],
     );
@@ -60,7 +60,7 @@ export default function ScanContactScreen() {
     <QRScanner
       onScan={handleScan}
       onClose={() => router.back()}
-      hint="Scan a SplitSOL contact QR code"
+      hint="Scan a SplitSOL member QR code"
     />
   );
 }
