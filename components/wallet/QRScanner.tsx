@@ -1,23 +1,72 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { Button } from '@/components/ui/Button';
+import { COLORS, FONT, SPACING } from '@/utils/constants';
 
 interface QRScannerProps {
-  onScan: (data: string) => void;
+  onScan: (data: string) => boolean | Promise<boolean>;
   onClose?: () => void;
+  hint?: string;
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ onScan }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({
+  onScan,
+  onClose,
+  hint = 'Scan a SplitSOL QR code',
+}) => {
   const [permission, requestPermission] = useCameraPermissions();
+  const [hasScanned, setHasScanned] = useState(false);
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    // Validate it's a valid Solana address (32-44 chars, base58)
-    if (data && data.length >= 32 && data.length <= 44) {
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
+    if (!data || hasScanned) return;
+
+    setHasScanned(true);
+    const accepted = await Promise.resolve(onScan(data));
+
+    if (accepted) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onScan(data);
+      return;
     }
+
+    setHasScanned(false);
   };
+
+  if (!permission) {
+    return (
+      <View style={styles.permissionContainer}>
+        <Text style={styles.permissionTitle}>Preparing camera...</Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.permissionContainer}>
+        <Text style={styles.permissionTitle}>Camera access is required</Text>
+        <Text style={styles.permissionText}>
+          Allow camera permission to scan another SplitSOL member&apos;s QR code.
+        </Text>
+        <Button
+          title="Allow Camera Access"
+          onPress={() => {
+            void requestPermission();
+          }}
+          size="lg"
+          style={styles.permissionButton}
+        />
+        {onClose && (
+          <Button
+            title="Cancel"
+            onPress={onClose}
+            variant="ghost"
+            size="sm"
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -25,12 +74,16 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan }) => {
         style={styles.camera}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={handleBarCodeScanned}
+        onBarcodeScanned={hasScanned ? undefined : handleBarCodeScanned}
       />
-      {/* Overlay with scanning frame */}
       <View style={styles.overlay}>
         <View style={styles.scanFrame} />
-        <Text style={styles.hint}>Scan wallet QR code</Text>
+        <Text style={styles.hint}>{hint}</Text>
+        {onClose && (
+          <View style={styles.closeButtonWrap}>
+            <Button title="Close" onPress={onClose} variant="secondary" />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -39,6 +92,31 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan }) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   camera: { flex: 1 },
+  permissionContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxxl,
+    backgroundColor: COLORS.bg.primary,
+  },
+  permissionTitle: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
+    textAlign: 'center',
+  },
+  permissionText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.md,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: SPACING.sm,
+  },
+  permissionButton: {
+    width: '100%',
+    marginTop: SPACING.xxl,
+    marginBottom: SPACING.sm,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -55,6 +133,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 80,
     color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
+    fontSize: FONT.size.md,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.xxl,
+  },
+  closeButtonWrap: {
+    position: 'absolute',
+    top: 70,
+    right: 24,
   },
 });

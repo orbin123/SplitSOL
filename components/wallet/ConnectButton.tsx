@@ -1,50 +1,63 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
-import { connectWallet } from '@/utils/mwa';
+import { disconnectWalletSession } from '@/utils/mwa';
 import { truncateAddress } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 import * as Haptics from 'expo-haptics';
 
 export const ConnectButton: React.FC = () => {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const walletAddress = useAppStore((s) => s.walletAddress);
-  const setWallet = useAppStore((s) => s.setWallet);
-  const disconnectWallet = useAppStore((s) => s.disconnectWallet);
+  const user = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
 
   const handleConnect = async () => {
+    router.push('/(onboarding)/connect' as any);
+  };
+
+  const handleDisconnect = async () => {
     setLoading(true);
     try {
-      const result = await connectWallet();
-      setWallet(result.address, result.authToken);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error: any) {
-      const msg = error?.message ?? '';
-      if (msg.includes('User rejected') || msg.includes('rejected')) {
-        Alert.alert('Cancelled', 'Wallet connection was cancelled.');
-      } else if (msg.includes('not installed') || msg.includes('No wallet')) {
-        Alert.alert('No Wallet Found', 'Make sure Phantom or another MWA-compatible wallet is installed.');
-      } else {
-        Alert.alert('Connection Failed', 'Make sure Phantom is installed and try again.');
+      if (user.walletAuthToken) {
+        await disconnectWalletSession(user.walletAuthToken);
       }
+    } catch {
+      // Clear local auth even if wallet-side deauthorization fails.
     } finally {
+      setUser(user.name, null, null);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setLoading(false);
+      router.replace('/(onboarding)/welcome');
     }
   };
 
-  if (walletAddress) {
+  if (user.walletAddress) {
     return (
       <View style={styles.connected}>
         <View style={styles.dot} />
         <Text style={styles.address}>
-          {truncateAddress(walletAddress, 6)}
+          {truncateAddress(user.walletAddress, 6)}
         </Text>
         <Button
           title="Disconnect"
-          onPress={disconnectWallet}
+          onPress={() =>
+            Alert.alert('Disconnect Wallet', 'Are you sure you want to disconnect?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Disconnect',
+                style: 'destructive',
+                onPress: () => {
+                  void handleDisconnect();
+                },
+              },
+            ])
+          }
           variant="ghost"
           size="sm"
+          loading={loading}
         />
       </View>
     );
@@ -52,9 +65,8 @@ export const ConnectButton: React.FC = () => {
 
   return (
     <Button
-      title="Connect Wallet"
+      title="Connect Phantom Wallet"
       onPress={handleConnect}
-      loading={loading}
       variant="primary"
     />
   );

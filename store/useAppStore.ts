@@ -1,60 +1,203 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Group, Expense, Settlement, Member } from './types';
-import { generateId, stringToColor } from '@/utils/formatters';
+import {
+  AppState,
+  Contact,
+  Group,
+  Member,
+  Notification,
+  Settlement,
+  Transaction,
+  UserProfile,
+} from '@/types';
+import { generateId } from '@/utils/formatters';
 import { calculateBalances, simplifyDebts } from '@/utils/calculations';
+
+interface LegacyPersistedState {
+  user?: Partial<UserProfile> & { onboardingComplete?: boolean };
+  contacts?: Contact[];
+  groups?: Group[];
+  transactions?: Transaction[];
+  notifications?: Notification[];
+  walletAddress?: string | null;
+  walletAuthToken?: string | null;
+}
+
+const createInitialUser = (): UserProfile => ({
+  name: '',
+  walletAddress: null,
+  walletAuthToken: null,
+  createdAt: new Date().toISOString(),
+});
+
+const getContactIdByWallet = (
+  contacts: Contact[],
+  walletAddress: string | null | undefined,
+) => {
+  if (!walletAddress) return null;
+
+  return (
+    contacts.find((contact) => contact.walletAddress === walletAddress)?.id ?? null
+  );
+};
+
+const createMemberFromContact = (contact: Contact): Member => ({
+  id: generateId(),
+  name: contact.name,
+  walletAddress: contact.walletAddress,
+  contactId: contact.id,
+  isCurrentUser: false,
+});
 
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      user: {
-        name: '',
-        walletAddress: null,
-        onboardingComplete: false,
-        createdAt: new Date().toISOString(),
-      },
+      user: createInitialUser(),
+      contacts: [],
       groups: [],
-      walletAddress: null,
-      walletAuthToken: null,
+      transactions: [],
+      notifications: [],
 
-      setUser: (updates) =>
-        set((state) => ({
-          user: { ...state.user, ...updates },
-        })),
-
-      completeOnboarding: (name) =>
+      setUser: (name, walletAddress, authToken) =>
         set((state) => ({
           user: {
             ...state.user,
             name,
-            onboardingComplete: true,
+            walletAddress,
+            walletAuthToken: authToken,
           },
         })),
 
-      setWallet: (address, authToken) =>
+      addContact: (contact) => {
+        const existingContact = get().contacts.find(
+          (item) => item.walletAddress === contact.walletAddress,
+        );
+
+        if (existingContact) {
+          set((state) => ({
+            contacts: state.contacts.map((item) =>
+              item.id === existingContact.id
+                ? {
+                    ...item,
+                    name: contact.name || item.name,
+                    isFavorite: contact.isFavorite || item.isFavorite,
+                  }
+                : item,
+            ),
+          }));
+
+          return existingContact.id;
+        }
+
+        const nextContact: Contact = {
+          id: contact.id ?? generateId(),
+          name: contact.name,
+          walletAddress: contact.walletAddress,
+          isFavorite: contact.isFavorite,
+          addedAt: contact.addedAt ?? new Date().toISOString(),
+          lastTransactionAt: contact.lastTransactionAt ?? null,
+        };
+
         set((state) => ({
-          walletAddress: address,
-          walletAuthToken: authToken || null,
-          user: { ...state.user, walletAddress: address },
+          contacts: [nextContact, ...state.contacts],
+        }));
+
+        return nextContact.id;
+      },
+
+      removeContact: (id) =>
+        set((state) => ({
+          contacts: state.contacts.filter((contact) => contact.id !== id),
+          groups: state.groups.map((group) => ({
+            ...group,
+            members: group.members.map((member) =>
+              member.contactId === id ? { ...member, contactId: null } : member,
+            ),
+          })),
         })),
 
-      disconnectWallet: () =>
+      toggleFavorite: (id) =>
         set((state) => ({
-          walletAddress: null,
-          walletAuthToken: null,
-          user: { ...state.user, walletAddress: null },
+          contacts: state.contacts.map((contact) =>
+            contact.id === id
+              ? { ...contact, isFavorite: !contact.isFavorite }
+              : contact,
+          ),
         })),
 
-      createGroup: (name, emoji) => {
+      updateContactLastTransaction: (id) =>
+        set((state) => ({
+          contacts: state.contacts.map((contact) =>
+            contact.id === id
+              ? { ...contact, lastTransactionAt: new Date().toISOString() }
+              : contact,
+          ),
+        })),
+
+      addTransaction: (tx) => {
+        const nextTransaction: Transaction = {
+          ...tx,
+          id: tx.id ?? generateId(),
+          timestamp: tx.timestamp ?? new Date().toISOString(),
+        };
+
+        set((state) => ({
+          transactions: [nextTransaction, ...state.transactions],
+        }));
+
+        return nextTransaction.id;
+      },
+
+      updateTransactionStatus: (id, status, chainData) =>
+        set((state) => ({
+          transactions: state.transactions.map((tx) =>
+            tx.id === id ? { ...tx, status, chain: chainData } : tx,
+          ),
+        })),
+
+      addNotification: (notif) => {
+        const nextNotification: Notification = {
+          ...notif,
+          id: notif.id ?? generateId(),
+          timestamp: notif.timestamp ?? new Date().toISOString(),
+          read: notif.read ?? false,
+        };
+
+        set((state) => ({
+          notifications: [nextNotification, ...state.notifications],
+        }));
+
+        return nextNotification.id;
+      },
+
+      markNotificationRead: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map((notif) =>
+            notif.id === id ? { ...notif, read: true } : notif,
+          ),
+        })),
+
+      markAllNotificationsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((notif) => ({
+            ...notif,
+            read: true,
+          })),
+        })),
+
+      createGroup: (name, emoji, contactIds = []) => {
         const id = generateId();
-        const currentUser = get().user;
+        const { user, contacts } = get();
+        const selectedContacts = contactIds
+          .map((contactId) => contacts.find((contact) => contact.id === contactId))
+          .filter((contact): contact is Contact => Boolean(contact));
 
         const selfMember: Member = {
           id: generateId(),
-          name: currentUser.name || 'Me',
-          walletAddress: get().walletAddress,
-          avatarColor: stringToColor(currentUser.name || 'Me'),
+          name: user.name || 'Me',
+          walletAddress: user.walletAddress,
+          contactId: getContactIdByWallet(contacts, user.walletAddress),
           isCurrentUser: true,
         };
 
@@ -62,7 +205,12 @@ export const useAppStore = create<AppState>()(
           id,
           name,
           emoji,
-          members: [selfMember],
+          members: [
+            selfMember,
+            ...selectedContacts
+              .filter((contact) => contact.walletAddress !== user.walletAddress)
+              .map(createMemberFromContact),
+          ],
           expenses: [],
           settlements: [],
           createdAt: new Date().toISOString(),
@@ -75,86 +223,92 @@ export const useAppStore = create<AppState>()(
 
       deleteGroup: (groupId) =>
         set((state) => ({
-          groups: state.groups.filter((g) => g.id !== groupId),
+          groups: state.groups.filter((group) => group.id !== groupId),
         })),
 
-      addMember: (groupId, name, walletAddress) =>
+      addMember: (groupId, name, walletAddress, contactId = null) =>
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === groupId
+          groups: state.groups.map((group) =>
+            group.id === groupId
               ? {
-                  ...g,
+                  ...group,
                   members: [
-                    ...g.members,
+                    ...group.members,
                     {
                       id: generateId(),
                       name,
-                      walletAddress: walletAddress || null,
-                      avatarColor: stringToColor(name),
+                      walletAddress: walletAddress ?? null,
+                      contactId:
+                        contactId ??
+                        getContactIdByWallet(state.contacts, walletAddress ?? null),
                       isCurrentUser: false,
                     },
                   ],
                 }
-              : g,
+              : group,
           ),
         })),
 
       updateMemberWallet: (groupId, memberId, wallet) =>
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === groupId
+          groups: state.groups.map((group) =>
+            group.id === groupId
               ? {
-                  ...g,
-                  members: g.members.map((m) =>
-                    m.id === memberId
-                      ? { ...m, walletAddress: wallet }
-                      : m,
+                  ...group,
+                  members: group.members.map((member) =>
+                    member.id === memberId
+                      ? {
+                          ...member,
+                          walletAddress: wallet,
+                          contactId: getContactIdByWallet(state.contacts, wallet),
+                        }
+                      : member,
                   ),
                 }
-              : g,
+              : group,
           ),
         })),
 
       removeMember: (groupId, memberId) =>
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === groupId
+          groups: state.groups.map((group) =>
+            group.id === groupId
               ? {
-                  ...g,
-                  members: g.members.filter((m) => m.id !== memberId),
+                  ...group,
+                  members: group.members.filter((member) => member.id !== memberId),
                 }
-              : g,
+              : group,
           ),
         })),
 
       addExpense: (groupId, expenseData) =>
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === groupId
+          groups: state.groups.map((group) =>
+            group.id === groupId
               ? {
-                  ...g,
+                  ...group,
                   expenses: [
                     {
                       ...expenseData,
                       id: generateId(),
                       createdAt: new Date().toISOString(),
                     },
-                    ...g.expenses,
+                    ...group.expenses,
                   ],
                 }
-              : g,
+              : group,
           ),
         })),
 
       removeExpense: (groupId, expenseId) =>
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === groupId
+          groups: state.groups.map((group) =>
+            group.id === groupId
               ? {
-                  ...g,
-                  expenses: g.expenses.filter((e) => e.id !== expenseId),
+                  ...group,
+                  expenses: group.expenses.filter((expense) => expense.id !== expenseId),
                 }
-              : g,
+              : group,
           ),
         })),
 
@@ -165,54 +319,84 @@ export const useAppStore = create<AppState>()(
         };
 
         set((state) => ({
-          groups: state.groups.map((g) =>
-            g.id === settlement.groupId
-              ? { ...g, settlements: [settlement, ...g.settlements] }
-              : g,
+          groups: state.groups.map((group) =>
+            group.id === settlement.groupId
+              ? {
+                  ...group,
+                  settlements: [settlement, ...group.settlements],
+                }
+              : group,
           ),
         }));
       },
 
       updateSettlement: (settlementId, updates) =>
         set((state) => ({
-          groups: state.groups.map((g) => ({
-            ...g,
-            settlements: g.settlements.map((s) =>
-              s.id === settlementId ? { ...s, ...updates } : s,
+          groups: state.groups.map((group) => ({
+            ...group,
+            settlements: group.settlements.map((settlement) =>
+              settlement.id === settlementId
+                ? { ...settlement, ...updates }
+                : settlement,
             ),
           })),
         })),
 
       getGroup: (groupId) => {
-        return get().groups.find((g) => g.id === groupId);
+        return get().groups.find((group) => group.id === groupId);
       },
 
       getBalances: (groupId) => {
-        const group = get().groups.find((g) => g.id === groupId);
+        const group = get().groups.find((item) => item.id === groupId);
         if (!group) return [];
         return calculateBalances(group.expenses, group.members, group.settlements);
       },
 
       getSimplifiedDebts: (groupId) => {
-        const group = get().groups.find((g) => g.id === groupId);
+        const group = get().groups.find((item) => item.id === groupId);
         if (!group) return [];
+
         const balances = calculateBalances(
           group.expenses,
           group.members,
           group.settlements,
         );
+
         return simplifyDebts(balances, group.members);
       },
     }),
     {
       name: 'splitsol-store',
+      version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         user: state.user,
+        contacts: state.contacts,
         groups: state.groups,
-        walletAddress: state.walletAddress,
-        walletAuthToken: state.walletAuthToken,
+        transactions: state.transactions,
+        notifications: state.notifications,
       }),
+      migrate: (persistedState) => {
+        const legacyState = (persistedState ?? {}) as LegacyPersistedState;
+
+        return {
+          user: {
+            name: legacyState.user?.name ?? '',
+            walletAddress:
+              legacyState.user?.walletAddress ?? legacyState.walletAddress ?? null,
+            walletAuthToken:
+              legacyState.user?.walletAuthToken ??
+              legacyState.walletAuthToken ??
+              null,
+            createdAt:
+              legacyState.user?.createdAt ?? new Date().toISOString(),
+          },
+          contacts: legacyState.contacts ?? [],
+          groups: legacyState.groups ?? [],
+          transactions: legacyState.transactions ?? [],
+          notifications: legacyState.notifications ?? [],
+        };
+      },
     },
   ),
 );

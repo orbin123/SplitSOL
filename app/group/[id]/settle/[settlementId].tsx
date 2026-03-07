@@ -34,9 +34,13 @@ export default function Settlement() {
   const [status, setStatus] = useState<SettleStatus>('idle');
 
   const group = useAppStore((s) => s.getGroup(id));
-  const walletAddress = useAppStore((s) => s.walletAddress);
+  const walletAddress = useAppStore((s) => s.user.walletAddress);
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const addSettlement = useAppStore((s) => s.addSettlement);
+  const addTransaction = useAppStore((s) => s.addTransaction);
+  const updateContactLastTransaction = useAppStore(
+    (s) => s.updateContactLastTransaction,
+  );
 
   const [isOffline, setIsOffline] = useState(false);
 
@@ -104,6 +108,8 @@ export default function Settlement() {
       const { signature, confirmed } = await executeSettlement(transaction);
 
       if (confirmed) {
+        const settledAt = new Date().toISOString();
+
         addSettlement({
           groupId: group.id,
           from: currentUser.id,
@@ -112,9 +118,29 @@ export default function Settlement() {
           status: 'confirmed',
           txSignature: signature,
           memo: memoText,
-          settledAt: new Date().toISOString(),
+          settledAt,
           explorerUrl: getExplorerUrl(signature),
         });
+
+        addTransaction({
+          groupId: group.id,
+          payerWallet: walletAddress,
+          receiverWallet: recipientWallet,
+          amountUSDC: debt.amount,
+          status: 'confirmed',
+          signature,
+          timestamp: settledAt,
+          swap: null,
+          chain: {
+            networkFee: 0,
+            confirmationStatus: 'confirmed',
+            blockTime: null,
+          },
+        });
+
+        if (recipient.contactId) {
+          updateContactLastTransaction(recipient.contactId);
+        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace(`/tx/${signature}?groupId=${group.id}`);
@@ -146,6 +172,8 @@ export default function Settlement() {
     isDevnet,
     amountInSOL,
     addSettlement,
+    addTransaction,
+    updateContactLastTransaction,
     router,
   ]);
 

@@ -29,6 +29,26 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="contacts/index" options={{
+          title: 'My Contacts',
+        }} />
+        <Stack.Screen name="contacts/[id]" options={{
+          title: 'Contact',
+        }} />
+        <Stack.Screen name="contacts/scan" options={{
+          title: 'Scan Contact',
+          headerShown: false,
+          presentation: 'fullScreenModal',
+        }} />
+        <Stack.Screen name="split/index" options={{
+          title: 'Choose Group',
+        }} />
+        <Stack.Screen name="settle/index" options={{
+          title: 'Settle',
+        }} />
+        <Stack.Screen name="invite/index" options={{
+          title: 'Invite',
+        }} />
         <Stack.Screen name="group/create" options={{
           title: 'New Group',
           presentation: 'modal',
@@ -41,8 +61,8 @@ export default function RootLayout() {
           title: 'Settle Up',
           presentation: 'modal',
         }} />
-        <Stack.Screen name="group/[id]/add-expense" options={{
-          title: 'Add Expense',
+        <Stack.Screen name="group/[id]/add-split" options={{
+          title: 'Add Split',
           headerShown: false,
         }} />
         <Stack.Screen name="group/[id]/add-member" options={{

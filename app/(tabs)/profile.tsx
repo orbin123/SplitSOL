@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
@@ -20,6 +21,8 @@ import { Card } from '@/components/ui/Card';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { truncateAddress } from '@/utils/formatters';
 import { getSOLBalance } from '@/utils/solana';
+import { disconnectWalletSession } from '@/utils/mwa';
+import { buildContactQrPayload } from '@/utils/contactQr';
 import {
   COLORS,
   GRADIENTS,
@@ -38,25 +41,39 @@ try {
 } catch {}
 
 export default function Profile() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
+  const contacts = useAppStore((s) => s.contacts);
   const setUser = useAppStore((s) => s.setUser);
-  const walletAddress = useAppStore((s) => s.walletAddress);
-  const disconnectWallet = useAppStore((s) => s.disconnectWallet);
   const [balance, setBalance] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(user.name);
+  const walletAddress = user.walletAddress;
 
   const saveName = () => {
     const trimmed = draftName.trim();
     if (trimmed) {
-      setUser({ name: trimmed });
+      setUser(trimmed.slice(0, 20), user.walletAddress, user.walletAuthToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
       setDraftName(user.name);
     }
     setEditingName(false);
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      if (user.walletAuthToken) {
+        await disconnectWalletSession(user.walletAuthToken);
+      }
+    } catch {
+      // Local logout should still proceed if wallet-side cleanup fails.
+    } finally {
+      setUser(user.name, null, null);
+      router.replace('/(onboarding)/welcome');
+    }
   };
 
   const fetchBalance = useCallback(async () => {
@@ -89,6 +106,11 @@ export default function Profile() {
     Alert.alert('Copied!', 'Wallet address copied to clipboard.');
   };
 
+  const contactQrValue =
+    user.name && walletAddress
+      ? buildContactQrPayload(user.name, walletAddress)
+      : null;
+
   return (
     <ScrollView
       style={styles.container}
@@ -115,7 +137,7 @@ export default function Profile() {
               value={draftName}
               onChangeText={setDraftName}
               autoFocus
-              maxLength={30}
+              maxLength={20}
               returnKeyType="done"
               onSubmitEditing={saveName}
               onBlur={saveName}
@@ -150,17 +172,38 @@ export default function Profile() {
       </View>
 
       {/* QR Code */}
-      {walletAddress && QRCode && (
+      {walletAddress && QRCode && contactQrValue && (
         <Card style={styles.qrCard}>
           <QRCode
-            value={walletAddress}
-            size={160}
+            value={contactQrValue}
+            size={184}
             color={COLORS.text.primary}
             backgroundColor="transparent"
           />
-          <Text style={styles.qrHint}>Scan to add your wallet</Text>
+          <Text style={styles.qrHint}>Scan to add me on SplitSOL</Text>
+          <Text style={styles.qrSubhint}>
+            This QR shares your display name and wallet address.
+          </Text>
         </Card>
       )}
+
+      <Card
+        style={styles.contactsCard}
+        onPress={() => router.push('/contacts' as any)}
+      >
+        <View style={styles.contactsCopy}>
+          <Text style={styles.contactsTitle}>My Contacts</Text>
+          <Text style={styles.contactsSub}>
+            {contacts.length} SplitSOL member
+            {contacts.length === 1 ? '' : 's'}
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={COLORS.text.tertiary}
+        />
+      </Card>
 
       {/* SOL Balance */}
       {walletAddress && balance !== null && (
@@ -214,7 +257,9 @@ export default function Profile() {
                 {
                   text: 'Disconnect',
                   style: 'destructive',
-                  onPress: disconnectWallet,
+                  onPress: () => {
+                    void handleDisconnect();
+                  },
                 },
               ]);
             }}
@@ -317,8 +362,33 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   qrHint: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
+  },
+  qrSubhint: {
     color: COLORS.text.tertiary,
     fontSize: FONT.size.sm,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  contactsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  contactsCopy: {
+    flex: 1,
+  },
+  contactsTitle: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
+  },
+  contactsSub: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    marginTop: 2,
   },
 
   balanceGradient: {

@@ -1,11 +1,5 @@
 import React, { useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,7 +41,7 @@ function getGroupIconBg(str: string): string {
 }
 
 const QUICK_ACTIONS: { key: string; icon: string; label: string }[] = [
-  { key: 'expense', icon: 'add-circle-outline', label: 'Expense' },
+  { key: 'split', icon: 'add-circle-outline', label: 'Add Split' },
   { key: 'settle', icon: 'swap-horizontal-outline', label: 'Settle' },
   { key: 'scan', icon: 'scan-outline', label: 'Scan' },
   { key: 'invite', icon: 'people-outline', label: 'Invite' },
@@ -85,18 +79,23 @@ export default function Home() {
   const handleQuickAction = (key: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     switch (key) {
-      case 'expense':
-        if (groups.length > 0) router.push(`/group/${groups[0].id}/add-expense`);
-        else router.push('/group/create');
+      case 'split':
+        if (groups.length === 0) {
+          router.push('/group/create');
+        } else if (groups.length === 1) {
+          router.push(`/group/${groups[0].id}/add-split` as any);
+        } else {
+          router.push('/split' as any);
+        }
         break;
       case 'settle':
-        if (groups.length > 0) router.push(`/group/${groups[0].id}`);
+        router.push('/settle' as any);
         break;
       case 'scan':
-        router.push('/(tabs)/wallet');
+        router.push('/contacts/scan' as any);
         break;
       case 'invite':
-        if (groups.length > 0) router.push(`/group/${groups[0].id}/add-member`);
+        router.push('/invite' as any);
         break;
     }
   };

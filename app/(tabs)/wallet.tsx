@@ -26,7 +26,7 @@ import {
 
 export default function Wallet() {
   const insets = useSafeAreaInsets();
-  const walletAddress = useAppStore((s) => s.walletAddress);
+  const walletAddress = useAppStore((s) => s.user.walletAddress);
   const [balance, setBalance] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 

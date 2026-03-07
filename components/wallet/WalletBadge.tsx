@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { COLORS } from '@/utils/constants';
 
 export const WalletBadge: React.FC = () => {
-  const walletAddress = useAppStore((s) => s.walletAddress);
+  const walletAddress = useAppStore((s) => s.user.walletAddress);
 
   if (!walletAddress) return null;
 

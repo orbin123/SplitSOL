@@ -3,20 +3,22 @@ import { Transaction, PublicKey } from '@solana/web3.js';
 import { APP, SOLANA } from './constants';
 import { getConnection } from './solana';
 
-interface AuthResult {
+export interface AuthResult {
   address: string;
   authToken: string;
 }
+
+const APP_IDENTITY = {
+  name: APP.NAME,
+  uri: APP.IDENTITY_URI,
+  icon: 'favicon.ico',
+} as const;
 
 // Connect wallet — returns the wallet address
 export const connectWallet = async (): Promise<AuthResult> => {
   const result = await transact(async (wallet) => {
     const auth = await wallet.authorize({
-      identity: {
-        name: APP.NAME,
-        uri: APP.IDENTITY_URI,
-        icon: 'favicon.ico',
-      },
+      identity: APP_IDENTITY,
       cluster: SOLANA.CLUSTER,
     });
 
@@ -29,6 +31,34 @@ export const connectWallet = async (): Promise<AuthResult> => {
   return result;
 };
 
+export const reauthorizeWallet = async (
+  authToken: string,
+): Promise<AuthResult> => {
+  const result = await transact(async (wallet) => {
+    const auth = await wallet.reauthorize({
+      auth_token: authToken,
+      identity: APP_IDENTITY,
+    });
+
+    return {
+      address: auth.accounts[0].address,
+      authToken: auth.auth_token,
+    };
+  });
+
+  return result;
+};
+
+export const disconnectWalletSession = async (
+  authToken: string,
+): Promise<void> => {
+  await transact(async (wallet) => {
+    await wallet.deauthorize({
+      auth_token: authToken,
+    });
+  });
+};
+
 // Sign and send a transaction — returns the signature
 export const signAndSendTransaction = async (
   transaction: Transaction,
@@ -38,11 +68,7 @@ export const signAndSendTransaction = async (
   const signature = await transact(async (wallet) => {
     // Re-authorize
     const auth = await wallet.authorize({
-      identity: {
-        name: APP.NAME,
-        uri: APP.IDENTITY_URI,
-        icon: 'favicon.ico',
-      },
+      identity: APP_IDENTITY,
       cluster: SOLANA.CLUSTER,
     });
 

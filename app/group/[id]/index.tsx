@@ -316,7 +316,7 @@ export default function GroupDetail() {
           <EmptyState
             emoji="🧾"
             title="No expenses yet"
-            subtitle="Add your first expense to start tracking."
+            subtitle="Add your first split to start tracking."
           />
         ) : (
           <FlatList
@@ -342,13 +342,13 @@ export default function GroupDetail() {
         </ScrollView>
       )}
 
-      {/* Add Expense Button */}
+      {/* Add Split Button */}
       {activeTab === 'expenses' && (
         <TouchableOpacity
           style={styles.fab}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push(`/group/${id}/add-expense`);
+            router.push(`/group/${id}/add-split` as any);
           }}
           activeOpacity={0.8}
         >

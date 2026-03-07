@@ -22,7 +22,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { formatCurrency } from '@/utils/formatters';
 import { COLORS, GRADIENTS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
-export default function AddExpense() {
+export default function AddSplit() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -61,7 +61,7 @@ export default function AddExpense() {
     );
   };
 
-  const validateExpense = (): string | null => {
+  const validateSplit = (): string | null => {
     if (!description.trim()) return 'Please enter a description';
     if (!amount || parsedAmount <= 0) return 'Please enter a valid amount';
     if (parsedAmount > 1000000) return 'Amount seems too large. Please double-check.';
@@ -71,7 +71,7 @@ export default function AddExpense() {
   };
 
   const handleAdd = () => {
-    const error = validateExpense();
+    const error = validateSplit();
     if (error) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Missing Info', error);
@@ -103,7 +103,6 @@ export default function AddExpense() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Amount Card */}
         <LinearGradient
           colors={GRADIENTS.purple}
           start={{ x: 0, y: 0 }}
@@ -144,7 +143,6 @@ export default function AddExpense() {
           </View>
         </LinearGradient>
 
-        {/* Description */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>DESCRIPTION</Text>
           <Input
@@ -155,7 +153,6 @@ export default function AddExpense() {
           />
         </View>
 
-        {/* Paid by */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>PAID BY</Text>
           <ScrollView
@@ -194,7 +191,6 @@ export default function AddExpense() {
           </ScrollView>
         </View>
 
-        {/* Split among */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>SPLIT AMONG</Text>
           <View style={styles.splitList}>
@@ -246,12 +242,11 @@ export default function AddExpense() {
         </View>
       </ScrollView>
 
-      {/* Bottom Button */}
       <View
         style={[styles.bottomBar, { paddingBottom: insets.bottom || SPACING.lg }]}
       >
         <Button
-          title="Add Expense →"
+          title="Add Split →"
           variant="dark"
           size="lg"
           onPress={handleAdd}
@@ -277,7 +272,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: SPACING.xxl,
   },
-
   amountCard: {
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xxl,
@@ -328,7 +322,6 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.sm,
     fontWeight: FONT.weight.medium,
   },
-
   section: {
     paddingHorizontal: SPACING.xxl,
     marginTop: SPACING.xxl,
@@ -340,7 +333,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT.weight.semibold,
     letterSpacing: 1,
   },
-
   memberScroll: {
     gap: SPACING.sm,
   },
@@ -368,7 +360,6 @@ const styles = StyleSheet.create({
   memberChipTextActive: {
     color: COLORS.text.primary,
   },
-
   splitList: {
     gap: SPACING.sm,
   },
@@ -416,7 +407,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg.success,
     borderColor: COLORS.bg.success,
   },
-
   bottomBar: {
     paddingHorizontal: SPACING.xxl,
     paddingTop: SPACING.lg,
