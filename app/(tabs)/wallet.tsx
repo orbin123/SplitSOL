@@ -5,14 +5,16 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { truncateAddress } from '@/utils/formatters';
+import { getRpcErrorCopy } from '@/utils/errorMessages';
 import { getSOLBalance } from '@/utils/solana';
 import {
   COLORS,
@@ -29,17 +31,20 @@ export default function Wallet() {
   const walletAddress = useAppStore((s) => s.user.walletAddress);
   const [balance, setBalance] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchBalance = useCallback(async () => {
     if (!walletAddress) {
       setBalance(null);
+      setErrorMessage(null);
       return;
     }
     try {
       setBalance(await getSOLBalance(walletAddress));
-    } catch {
+      setErrorMessage(null);
+    } catch (error) {
       setBalance(null);
-      Alert.alert('Connection Error', 'Unable to fetch balance. Check your internet connection.');
+      setErrorMessage(getRpcErrorCopy(error).message);
     }
   }, [walletAddress]);
 
@@ -114,13 +119,27 @@ export default function Wallet() {
           <Card>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Network</Text>
-              <View style={styles.networkBadge}>
-                <Text style={styles.networkText}>
-                  {SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
-                </Text>
-              </View>
+              <Badge
+                label={SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
+                variant="warning"
+              />
             </View>
           </Card>
+
+          {errorMessage && (
+            <Card style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Balance unavailable</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+              <Button
+                title="Retry"
+                onPress={() => {
+                  void fetchBalance();
+                }}
+                variant="secondary"
+                style={styles.retryButton}
+              />
+            </Card>
+          )}
 
           {SOLANA.CLUSTER === 'devnet' && (
             <Card style={styles.hintCard}>
@@ -227,18 +246,25 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.medium,
   },
-  networkBadge: {
-    backgroundColor: COLORS.bg.warning,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,
+  errorCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.bg.danger,
+    gap: SPACING.sm,
   },
-  networkText: {
-    color: COLORS.bg.dark,
-    fontSize: FONT.size.xs,
+  errorTitle: {
+    color: COLORS.text.danger,
+    fontSize: FONT.size.md,
     fontWeight: FONT.weight.bold,
   },
-
+  errorText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    lineHeight: 20,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    marginTop: SPACING.xs,
+  },
   hintCard: {
     borderLeftWidth: 3,
     borderLeftColor: COLORS.bg.warning,

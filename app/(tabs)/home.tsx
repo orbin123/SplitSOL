@@ -7,7 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/utils/formatters';
 import {
   calculateBalances,
@@ -158,11 +161,11 @@ export default function Home() {
               color={COLORS.text.primary}
             />
             {unreadNotifications > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                </Text>
-              </View>
+              <Badge
+                label={unreadNotifications > 9 ? '9+' : String(unreadNotifications)}
+                size="sm"
+                style={styles.badge}
+              />
             )}
           </TouchableOpacity>
           <TouchableOpacity
@@ -244,21 +247,17 @@ export default function Home() {
 
       {groups.length === 0 ? (
         <Card style={styles.emptyCard}>
-          <Text style={styles.emptyEmoji}>👥</Text>
-          <Text style={styles.emptyTitle}>No groups yet</Text>
-          <Text style={styles.emptySub}>
-            Create your first group to start splitting expenses.
-          </Text>
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/group/create');
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.createBtnText}>Create Group</Text>
-          </TouchableOpacity>
+          <EmptyState
+            emoji="👥"
+            title="No groups yet"
+            subtitle="Create your first group to start splitting expenses."
+            action={
+              <Button
+                title="Create Group"
+                onPress={() => router.push('/group/create')}
+              />
+            }
+          />
         </Card>
       ) : (
         groups.map((group) => {
@@ -374,18 +373,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     right: 2,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: '#3B82F6',
+    minWidth: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    color: COLORS.text.white,
-    fontSize: 10,
-    fontWeight: FONT.weight.bold,
   },
   greeting: {
     color: COLORS.text.secondary,
@@ -539,32 +528,7 @@ const styles = StyleSheet.create({
   },
 
   emptyCard: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xxxl,
-    gap: SPACING.md,
-  },
-  emptyEmoji: { fontSize: 48 },
-  emptyTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-  },
-  emptySub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-  },
-  createBtn: {
-    backgroundColor: COLORS.bg.accent,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xxl,
-    borderRadius: RADIUS.md,
-    marginTop: SPACING.md,
-  },
-  createBtnText: {
-    color: COLORS.text.white,
-    fontWeight: FONT.weight.semibold,
-    fontSize: FONT.size.md,
+    minHeight: 260,
   },
 
   fab: {

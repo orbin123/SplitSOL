@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -12,8 +11,14 @@ import * as Haptics from 'expo-haptics';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { useAppStore } from '@/store/useAppStore';
+import {
+  getRpcErrorCopy,
+  getSettlementExecutionErrorCopy,
+  getSettlementPreparationErrorCopy,
+} from '@/utils/errorMessages';
 import { AutoPayResult, buildAutoPayTransaction, getAutoPayPreviewLabel } from '@/utils/autopay';
 import { COLORS, FONT, RADIUS, SOLANA, SPACING } from '@/utils/constants';
 import { buildMemo, formatCurrency, truncateAddress } from '@/utils/formatters';
@@ -46,6 +51,10 @@ export default function Settlement() {
   const [preparedPayment, setPreparedPayment] = useState<AutoPayResult | null>(null);
   const [preparedAt, setPreparedAt] = useState<number | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [failureCopy, setFailureCopy] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   const group = useAppStore((s) => s.getGroup(id));
   const walletAddress = useAppStore((s) => s.user.walletAddress);
@@ -95,6 +104,7 @@ export default function Settlement() {
     setPreparedPayment(null);
     setPreparedAt(null);
     setStatus('idle');
+    setFailureCopy(null);
   }, [debt?.amount, debt?.from.id, debt?.to.id, recipientWallet, walletAddress]);
 
   const buildPayment = useCallback(async () => {
@@ -128,6 +138,7 @@ export default function Settlement() {
   const handlePreparePayment = useCallback(async () => {
     if (!walletAddress || !recipientWallet || !debt || !isCurrentUserDebtor) return;
 
+    setFailureCopy(null);
     setStatus('preparing');
 
     try {
@@ -137,25 +148,8 @@ export default function Settlement() {
       setPreparedPayment(null);
       setPreparedAt(null);
       setStatus('failed');
+      setFailureCopy(getSettlementPreparationErrorCopy(error));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-      const message = error?.message ?? '';
-      if (message.includes('No supported token balances')) {
-        Alert.alert(
-          'No Available Tokens',
-          "We couldn't find enough spendable tokens in your wallet for this payment.",
-        );
-      } else if (message.includes('No Jupiter swap route')) {
-        Alert.alert(
-          'AutoPay Unavailable',
-          'No swap route was found for the tokens currently in your wallet.',
-        );
-      } else {
-        Alert.alert(
-          'Payment Prep Failed',
-          'We could not prepare the settlement. Please try again.',
-        );
-      }
     }
   }, [walletAddress, recipientWallet, debt, isCurrentUserDebtor, preparePayment]);
 
@@ -172,6 +166,7 @@ export default function Settlement() {
       return;
     }
 
+    setFailureCopy(null);
     setStatus('confirming');
 
     try {
@@ -187,6 +182,10 @@ export default function Settlement() {
 
       if (!confirmed) {
         setStatus('failed');
+        setFailureCopy({
+          title: 'Confirmation Incomplete',
+          message: 'The payment was submitted, but confirmation did not complete. Please try again.',
+        });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -237,29 +236,10 @@ export default function Settlement() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace(`/tx/${signature}?groupId=${group.id}`);
-    } catch (error: any) {
+    } catch (error) {
       setStatus('failed');
+      setFailureCopy(getSettlementExecutionErrorCopy(error));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-      const message = error?.message ?? '';
-      if (message.includes('User rejected') || message.includes('rejected')) {
-        Alert.alert('Cancelled', 'You rejected the transaction in your wallet.');
-      } else if (message.includes('insufficient') || message.includes('Insufficient')) {
-        Alert.alert(
-          'Insufficient Funds',
-          "You don't have enough tokens or SOL for this settlement and network fees.",
-        );
-      } else if (message.includes('timeout') || message.includes('Timeout')) {
-        Alert.alert(
-          'Network Timeout',
-          'The Solana network is busy. Please try again.',
-        );
-      } else {
-        Alert.alert(
-          'Settlement Failed',
-          'Something went wrong while confirming the settlement. Please try again.',
-        );
-      }
     }
   }, [
     walletAddress,
@@ -488,16 +468,50 @@ export default function Settlement() {
               A network connection is required to prepare and confirm this
               settlement.
             </Text>
+            <View style={styles.promptAction}>
+              <Button
+                title="Try Again"
+                variant="secondary"
+                onPress={async () => {
+                  try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 5000);
+                    await fetch(getRpcEndpoint(), {
+                      method: 'HEAD',
+                      signal: controller.signal,
+                    });
+                    clearTimeout(timeout);
+                    setIsOffline(false);
+                  } catch (error) {
+                    Alert.alert(
+                      getRpcErrorCopy(error).title,
+                      getRpcErrorCopy(error).message,
+                    );
+                  }
+                }}
+              />
+            </View>
           </Card>
         )}
 
-        {status === 'failed' && (
+        {status === 'failed' && failureCopy && (
           <Card style={styles.failedCard}>
             <Text style={styles.failedIcon}>✗</Text>
-            <Text style={styles.failedTitle}>Payment Not Completed</Text>
-            <Text style={styles.failedSub}>
-              Review the details above and try again when you&apos;re ready.
-            </Text>
+            <Text style={styles.failedTitle}>{failureCopy.title}</Text>
+            <Text style={styles.failedSub}>{failureCopy.message}</Text>
+            <Button
+              title="Try Again"
+              onPress={() => {
+                if (preparedPayment) {
+                  void handleConfirmPayment();
+                  return;
+                }
+
+                void handlePreparePayment();
+              }}
+              variant="secondary"
+              style={styles.failedButton}
+            />
           </Card>
         )}
       </ScrollView>
@@ -514,21 +528,15 @@ export default function Settlement() {
         />
       </View>
 
-      {isProcessing && (
-        <View style={styles.overlay}>
-          <View style={styles.overlayBox}>
-            <ActivityIndicator size="large" color={COLORS.bg.accentLight} />
-            <Text style={styles.overlayTitle}>
-              {status === 'preparing' ? 'Preparing Payment' : 'Confirming on Solana'}
-            </Text>
-            <Text style={styles.overlaySub}>
-              {status === 'preparing'
-                ? 'Checking balances and building the best route...'
-                : 'Waiting for wallet approval and network confirmation...'}
-            </Text>
-          </View>
-        </View>
-      )}
+      <LoadingOverlay
+        visible={isProcessing}
+        title={status === 'preparing' ? 'Preparing Payment' : 'Confirming on Solana'}
+        subtitle={
+          status === 'preparing'
+            ? 'Checking balances and building the best route...'
+            : 'Waiting for wallet approval and network confirmation...'
+        }
+      />
     </View>
   );
 }
@@ -721,6 +729,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: SPACING.md,
   },
+  failedButton: {
+    marginTop: SPACING.lg,
+  },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -737,34 +748,5 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: SPACING.lg,
     borderRadius: RADIUS.lg,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  overlayBox: {
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xxxl,
-    alignItems: 'center',
-    width: 280,
-    borderWidth: 1,
-    borderColor: COLORS.border.default,
-  },
-  overlayTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-    marginTop: SPACING.xl,
-    textAlign: 'center',
-  },
-  overlaySub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: SPACING.sm,
-    textAlign: 'center',
   },
 });

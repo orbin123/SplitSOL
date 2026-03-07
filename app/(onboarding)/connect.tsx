@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,6 +7,7 @@ import { SplitSolLogo } from '@/components/branding/SplitSolLogo';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/useAppStore';
 import { connectWallet } from '@/utils/mwa';
+import { getWalletConnectionErrorCopy } from '@/utils/errorMessages';
 import { COLORS, FONT, RADIUS, SOLANA, SPACING } from '@/utils/constants';
 
 export default function ConnectScreen() {
@@ -16,10 +17,14 @@ export default function ConnectScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState('Wallet connection failed');
+  const [showInstallAction, setShowInstallAction] = useState(false);
 
   const handleConnect = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorTitle('Wallet connection failed');
+    setShowInstallAction(false);
 
     try {
       const result = await connectWallet();
@@ -32,16 +37,10 @@ export default function ConnectScreen() {
         router.replace('/(onboarding)/username' as any);
       }
     } catch (err: any) {
-      const message = err?.message ?? '';
-      let nextError = 'Connection failed. Make sure Phantom is installed and try again.';
-
-      if (message.includes('User rejected') || message.includes('rejected')) {
-        nextError = 'Connection request was rejected in Phantom.';
-      } else if (message.includes('No wallet') || message.includes('not installed')) {
-        nextError = 'No MWA-compatible wallet was found. Install Phantom and try again.';
-      }
-
-      setError(nextError);
+      const copy = getWalletConnectionErrorCopy(err);
+      setErrorTitle(copy.title);
+      setError(copy.message);
+      setShowInstallAction(copy.showInstallAction);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -88,8 +87,19 @@ export default function ConnectScreen() {
                   color={COLORS.text.white}
                 />
               </View>
-              <Text style={styles.statusTitle}>Wallet connection failed</Text>
+              <Text style={styles.statusTitle}>{errorTitle}</Text>
               <Text style={styles.statusSub}>{error ?? 'Please try again.'}</Text>
+              {showInstallAction && (
+                <Button
+                  title="Install Phantom"
+                  onPress={() => {
+                    void Linking.openURL('https://phantom.app/download');
+                  }}
+                  variant="secondary"
+                  size="lg"
+                  style={styles.actionButton}
+                />
+              )}
               <Button
                 title="Retry Connection"
                 onPress={handleConnect}

@@ -26,9 +26,31 @@ export const QRScanner: React.FC<QRScannerProps> = ({
 
     const payload = parseSplitSolQrPayload(data);
     if (!payload) {
+      setHasScanned(true);
       Alert.alert(
         'Invalid QR Code',
-        'This QR code is not a valid SplitSOL QR.',
+        'This QR code is not a valid SplitSOL invite. You can scan again or close the scanner.',
+        onClose
+          ? [
+              {
+                text: 'Close',
+                style: 'cancel',
+                onPress: () => {
+                  setHasScanned(false);
+                  onClose();
+                },
+              },
+              {
+                text: 'Scan Again',
+                onPress: () => setHasScanned(false),
+              },
+            ]
+          : [
+              {
+                text: 'Scan Again',
+                onPress: () => setHasScanned(false),
+              },
+            ],
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;

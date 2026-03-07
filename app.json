@@ -4,8 +4,8 @@
     "slug": "splitsol",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "icon": "./assets/splitsol-icon1.png",
+    "userInterfaceStyle": "light",
     "scheme": "splitsol",
     "android": {
       "adaptiveIcon": {
@@ -31,8 +31,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0A0E1A",
-          "image": "./assets/splash.png",
+          "backgroundColor": "#F8F7FC",
+          "image": "./assets/icon.png",
           "imageWidth": 200
         }
       ]
