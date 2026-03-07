@@ -9,7 +9,11 @@ import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/formatters';
-import { getTotalExpenses } from '@/utils/calculations';
+import {
+  calculateBalances,
+  getTotalExpenses,
+  simplifyDebts,
+} from '@/utils/calculations';
 import {
   COLORS,
   GRADIENTS,
@@ -54,18 +58,37 @@ export default function Home() {
   const groups = useAppStore((s) => s.groups);
   const getBalances = useAppStore((s) => s.getBalances);
 
-  const overallBalance = useMemo(() => {
-    let total = 0;
+  const summaryTotals = useMemo(() => {
+    let owedToYou = 0;
+    let youOwe = 0;
+
     for (const group of groups) {
-      const balances = getBalances(group.id);
-      const myBalance = balances.find((b) => {
-        const member = group.members.find((m) => m.id === b.memberId);
-        return member?.isCurrentUser;
+      const currentMember = group.members.find((member) => member.isCurrentUser);
+      if (!currentMember) continue;
+
+      const balances = calculateBalances(
+        group.expenses,
+        group.members,
+        group.settlements,
+      );
+      const simplifiedDebts = simplifyDebts(balances, group.members);
+
+      simplifiedDebts.forEach((debt) => {
+        if (debt.to.id === currentMember.id) {
+          owedToYou += debt.amount;
+        }
+
+        if (debt.from.id === currentMember.id) {
+          youOwe += debt.amount;
+        }
       });
-      if (myBalance) total += myBalance.amount;
     }
-    return total;
-  }, [groups, getBalances]);
+
+    return {
+      owedToYou: Math.round(owedToYou * 100) / 100,
+      youOwe: Math.round(youOwe * 100) / 100,
+    };
+  }, [groups]);
 
   const getGroupBalance = (group: Group) => {
     const balances = getBalances(group.id);
@@ -133,13 +156,26 @@ export default function Home() {
         style={styles.balanceCard}
       >
         <Text style={styles.balanceLabel}>OVERALL BALANCE</Text>
-        <Text style={styles.balanceAmount}>
-          {formatCurrency(Math.abs(overallBalance))}
-        </Text>
+        <View style={styles.balanceSummaryRow}>
+          <View style={styles.balanceSummaryColumn}>
+            <Text style={styles.balanceSummaryLabel}>You&apos;re owed</Text>
+            <Text
+              style={[styles.balanceSummaryAmount, styles.balanceSummaryPositive]}
+            >
+              {formatCurrency(summaryTotals.owedToYou)}
+            </Text>
+          </View>
+          <View style={styles.balanceSummaryColumn}>
+            <Text style={styles.balanceSummaryLabel}>You owe</Text>
+            <Text
+              style={[styles.balanceSummaryAmount, styles.balanceSummaryNegative]}
+            >
+              {formatCurrency(summaryTotals.youOwe)}
+            </Text>
+          </View>
+        </View>
         <Text style={styles.balanceSub}>
-          {overallBalance >= 0
-            ? `You are owed overall across ${groups.length} group${groups.length !== 1 ? 's' : ''}`
-            : `You owe overall across ${groups.length} group${groups.length !== 1 ? 's' : ''}`}
+          Across {groups.length} group{groups.length !== 1 ? 's' : ''}
         </Text>
 
         {/* Quick Actions */}
@@ -313,10 +349,30 @@ const styles = StyleSheet.create({
     fontWeight: FONT.weight.semibold,
     letterSpacing: 1,
   },
-  balanceAmount: {
+  balanceSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.lg,
+    marginTop: SPACING.sm,
+  },
+  balanceSummaryColumn: {
+    flex: 1,
+    gap: SPACING.xs,
+  },
+  balanceSummaryLabel: {
     color: COLORS.text.primary,
-    fontSize: 36,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+  },
+  balanceSummaryAmount: {
+    fontSize: 28,
     fontWeight: FONT.weight.extrabold,
+  },
+  balanceSummaryPositive: {
+    color: COLORS.text.success,
+  },
+  balanceSummaryNegative: {
+    color: COLORS.text.danger,
   },
   balanceSub: {
     color: COLORS.text.secondary,
