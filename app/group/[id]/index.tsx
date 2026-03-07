@@ -116,6 +116,7 @@ export default function GroupDetail() {
           title="Settle"
           variant="primary"
           size="sm"
+          disabled={!debt.from.isCurrentUser}
           onPress={() => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             router.push(

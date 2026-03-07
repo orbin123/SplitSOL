@@ -1,7 +1,9 @@
 import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol-web3js';
-import { Transaction, PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { APP, SOLANA } from './constants';
 import { getConnection } from './solana';
+
+export type WalletTransaction = Transaction | VersionedTransaction;
 
 export interface AuthResult {
   address: string;
@@ -61,7 +63,7 @@ export const disconnectWalletSession = async (
 
 // Sign and send a transaction — returns the signature
 export const signAndSendTransaction = async (
-  transaction: Transaction,
+  transaction: WalletTransaction,
 ): Promise<string> => {
   const connection = getConnection();
 
@@ -72,16 +74,16 @@ export const signAndSendTransaction = async (
       cluster: SOLANA.CLUSTER,
     });
 
-    // Ensure blockhash is fresh
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.lastValidBlockHeight = lastValidBlockHeight;
-    transaction.feePayer = new PublicKey(auth.accounts[0].address);
+    if (transaction instanceof Transaction) {
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      transaction.feePayer = new PublicKey(auth.accounts[0].address);
+    }
 
-    // Sign and send
     const signatures = await wallet.signAndSendTransactions({
-      transactions: [transaction],
+      transactions: [transaction as any],
     });
 
     return signatures[0];
@@ -92,7 +94,7 @@ export const signAndSendTransaction = async (
 
 // Convenience: Build, sign, send, and confirm in one call
 export const executeSettlement = async (
-  transaction: Transaction,
+  transaction: WalletTransaction,
 ): Promise<{ signature: string; confirmed: boolean }> => {
   const signature = await signAndSendTransaction(transaction);
 

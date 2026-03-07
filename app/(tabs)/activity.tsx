@@ -1,150 +1,127 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SectionList,
-  TouchableOpacity,
-} from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, SectionList } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Avatar } from '@/components/ui/Avatar';
-import { formatCurrency, timeAgo, truncateAddress } from '@/utils/formatters';
 import { COLORS, SPACING, FONT, RADIUS, TAB_BAR_HEIGHT } from '@/utils/constants';
-import { Settlement, Group, Member } from '@/store/types';
+import { resolveTransactionDetails } from '@/utils/transactions';
+import { Transaction } from '@/types';
 
-interface ActivityItem extends Settlement {
+interface TransactionHistoryItem {
+  transaction: Transaction;
+  title: string;
+  swapSummary: string | null;
   groupName: string;
-  groupEmoji: string;
-  fromMember: Member | undefined;
-  toMember: Member | undefined;
+  timestampLabel: string;
 }
 
-function buildActivityItems(groups: Group[]): ActivityItem[] {
-  const items: ActivityItem[] = [];
-  for (const group of groups) {
-    for (const s of group.settlements) {
-      items.push({
-        ...s,
-        groupName: group.name,
-        groupEmoji: group.emoji,
-        fromMember: group.members.find((m) => m.id === s.from),
-        toMember: group.members.find((m) => m.id === s.to),
-      });
-    }
-  }
-  items.sort(
-    (a, b) =>
-      new Date(b.settledAt ?? b.id).getTime() -
-      new Date(a.settledAt ?? a.id).getTime(),
-  );
-  return items;
-}
-
-function groupByDate(items: ActivityItem[]) {
-  const map = new Map<string, ActivityItem[]>();
+function groupByDate(items: TransactionHistoryItem[]) {
+  const map = new Map<string, TransactionHistoryItem[]>();
   for (const item of items) {
-    const d = item.settledAt
-      ? new Date(item.settledAt).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-      : 'Unknown';
+    const d = new Date(item.transaction.timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
     if (!map.has(d)) map.set(d, []);
     map.get(d)!.push(item);
   }
   return Array.from(map.entries()).map(([title, data]) => ({ title, data }));
 }
 
-export default function Activity() {
+export default function TransactionsScreen() {
   const router = useRouter();
+  const user = useAppStore((s) => s.user);
   const groups = useAppStore((s) => s.groups);
+  const transactions = useAppStore((s) => s.transactions);
 
-  const items = buildActivityItems(groups);
+  const items = useMemo(
+    () =>
+      [...transactions]
+        .sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        )
+        .map((transaction) => {
+          const resolved = resolveTransactionDetails(transaction, groups, user);
+
+          return {
+            transaction,
+            title: resolved.title,
+            swapSummary: resolved.swapSummary,
+            groupName: `${resolved.groupEmoji} ${resolved.groupName}`,
+            timestampLabel: new Date(transaction.timestamp).toLocaleTimeString(
+              'en-US',
+              {
+                hour: 'numeric',
+                minute: '2-digit',
+              },
+            ),
+          };
+        }),
+    [groups, transactions, user],
+  );
   const sections = groupByDate(items);
 
   if (items.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
-          emoji="📋"
-          title="No activity yet"
-          subtitle="Settled payments will appear here."
+          emoji="🧾"
+          title="No transactions yet"
+          subtitle="Settlements will appear here once you start paying people."
         />
       </View>
     );
   }
 
-  const renderItem = ({ item }: { item: ActivityItem }) => {
-    const isConfirmed = item.status === 'confirmed';
-    const fromName = item.fromMember?.name ?? 'Unknown';
-    const toName = item.toMember?.name ?? 'Unknown';
+  const renderItem = ({ item }: { item: TransactionHistoryItem }) => {
+    const statusStyle =
+      item.transaction.status === 'confirmed'
+        ? styles.statusConfirmed
+        : item.transaction.status === 'failed'
+          ? styles.statusFailed
+          : styles.statusPending;
+    const statusTextStyle =
+      item.transaction.status === 'confirmed'
+        ? styles.statusTextConfirmed
+        : item.transaction.status === 'failed'
+          ? styles.statusTextFailed
+          : styles.statusTextPending;
 
     return (
       <Card
         style={styles.card}
-        onPress={
-          item.txSignature
-            ? () =>
-                router.push(
-                  `/tx/${item.txSignature}?groupId=${item.groupId}`,
-                )
-            : undefined
-        }
+        onPress={() => router.push(`/tx/detail/${item.transaction.id}`)}
       >
         <View style={styles.cardRow}>
-          <Avatar name={fromName} size={36} />
           <View style={styles.cardInfo}>
-            <Text style={styles.cardTitle}>
-              {fromName} settled {formatCurrency(item.amount)} with {toName}
-            </Text>
-            <Text style={styles.cardMeta}>
-              {item.groupEmoji} {item.groupName} ·{' '}
-              {item.settledAt ? timeAgo(item.settledAt) : ''}
-            </Text>
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            {item.swapSummary && (
+              <Text style={styles.cardSwap}>{item.swapSummary}</Text>
+            )}
+            <Text style={styles.cardMeta}>{item.groupName}</Text>
           </View>
           <View style={styles.cardRight}>
-            <Text style={styles.cardAmount}>
-              {formatCurrency(item.amount)}
-            </Text>
+            <Text style={styles.cardTime}>{item.timestampLabel}</Text>
             <View
               style={[
                 styles.statusBadge,
-                isConfirmed ? styles.statusConfirmed : styles.statusPending,
+                statusStyle,
               ]}
             >
               <Text
                 style={[
                   styles.statusText,
-                  isConfirmed
-                    ? styles.statusTextConfirmed
-                    : styles.statusTextPending,
+                  statusTextStyle,
                 ]}
               >
-                {item.status}
+                {item.transaction.status}
               </Text>
             </View>
           </View>
         </View>
-
-        {item.txSignature && (
-          <TouchableOpacity
-            style={styles.sigRow}
-            onPress={() => {
-              if (item.explorerUrl) Linking.openURL(item.explorerUrl);
-            }}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.sigLabel}>tx:</Text>
-            <Text style={styles.sigValue}>
-              {truncateAddress(item.txSignature, 8)}
-            </Text>
-          </TouchableOpacity>
-        )}
       </Card>
     );
   };
@@ -153,7 +130,7 @@ export default function Activity() {
     <View style={styles.container}>
       <SectionList
         sections={sections}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.transaction.id}
         renderItem={renderItem}
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionHeader}>{section.title}</Text>
@@ -189,11 +166,7 @@ const styles = StyleSheet.create({
   card: {
     gap: SPACING.sm,
   },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
+  cardRow: { flexDirection: 'row', gap: SPACING.md },
   cardInfo: {
     flex: 1,
   },
@@ -205,16 +178,21 @@ const styles = StyleSheet.create({
   cardMeta: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
+    marginTop: SPACING.xs,
+  },
+  cardSwap: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.sm,
     marginTop: 2,
   },
   cardRight: {
     alignItems: 'flex-end',
     gap: SPACING.xs,
   },
-  cardAmount: {
-    color: COLORS.text.success,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.bold,
+  cardTime: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.medium,
   },
   statusBadge: {
     paddingHorizontal: SPACING.sm,
@@ -227,6 +205,9 @@ const styles = StyleSheet.create({
   statusPending: {
     backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
+  statusFailed: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+  },
   statusText: {
     fontSize: FONT.size.xs,
     fontWeight: FONT.weight.semibold,
@@ -238,23 +219,7 @@ const styles = StyleSheet.create({
   statusTextPending: {
     color: COLORS.bg.warning,
   },
-
-  sigRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingTop: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border.default,
-  },
-  sigLabel: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.medium,
-  },
-  sigValue: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.medium,
+  statusTextFailed: {
+    color: COLORS.text.danger,
   },
 });

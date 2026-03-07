@@ -8,7 +8,7 @@ const VISIBLE_TABS = ['home', 'activity', 'wallet', 'profile'];
 
 const TAB_ICONS: Record<string, [string, string]> = {
   home: ['home', 'home-outline'],
-  activity: ['stats-chart', 'stats-chart-outline'],
+  activity: ['receipt', 'receipt-outline'],
   wallet: ['wallet', 'wallet-outline'],
   profile: ['person', 'person-outline'],
 };

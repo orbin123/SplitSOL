@@ -4,17 +4,14 @@ import {
   Text,
   StyleSheet,
   Animated,
-  TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import { Button } from '@/components/ui/Button';
-import { truncateAddress } from '@/utils/formatters';
+import { useAppStore } from '@/store/useAppStore';
 import { getExplorerUrl } from '@/utils/solana';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { resolveTransactionDetails } from '@/utils/transactions';
 
 export default function TransactionSuccess() {
   const { signature, groupId } = useLocalSearchParams<{
@@ -22,6 +19,14 @@ export default function TransactionSuccess() {
     groupId?: string;
   }>();
   const router = useRouter();
+  const user = useAppStore((s) => s.user);
+  const groups = useAppStore((s) => s.groups);
+  const transactions = useAppStore((s) => s.transactions);
+
+  const transaction = transactions.find((item) => item.signature === signature);
+  const resolved = transaction
+    ? resolveTransactionDetails(transaction, groups, user)
+    : null;
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -54,12 +59,6 @@ export default function TransactionSuccess() {
     Linking.openURL(getExplorerUrl(signature));
   };
 
-  const copySignature = async () => {
-    await Clipboard.setStringAsync(signature);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied!', 'Transaction signature copied to clipboard.');
-  };
-
   const goBackToGroup = () => {
     if (groupId) {
       router.replace(`/group/${groupId}`);
@@ -89,21 +88,17 @@ export default function TransactionSuccess() {
           }}
         >
           <Text style={styles.title}>Settlement Confirmed</Text>
-          <Text style={styles.subtitle}>
-            Your transaction has been confirmed on the Solana network.
-          </Text>
-        </Animated.View>
-
-        <Animated.View
-          style={[styles.signatureCard, { opacity: fadeAnim }]}
-        >
-          <Text style={styles.signatureLabel}>Transaction Signature</Text>
-          <TouchableOpacity onPress={copySignature} activeOpacity={0.6}>
-            <Text style={styles.signatureText}>
-              {truncateAddress(signature, 12)}
+          <Text style={styles.subtitle}>{resolved?.title ?? 'Payment sent successfully.'}</Text>
+          {transaction?.swap && (
+            <Text style={styles.swapSummary}>
+              Converted {transaction.swap.inputAmount.toFixed(2)} {transaction.swap.inputToken} {'->'} {transaction.swap.outputUSDC.toFixed(2)} USDC
             </Text>
-            <Text style={styles.tapHint}>Tap to copy</Text>
-          </TouchableOpacity>
+          )}
+          {resolved && (
+            <Text style={styles.groupLine}>
+              {resolved.groupEmoji} {resolved.groupName}
+            </Text>
+          )}
         </Animated.View>
 
         <Animated.View
@@ -116,6 +111,15 @@ export default function TransactionSuccess() {
             size="lg"
             style={styles.actionButton}
           />
+          {transaction && (
+            <Button
+              title="View Transaction Details"
+              onPress={() => router.push(`/tx/detail/${transaction.id}`)}
+              variant="secondary"
+              size="lg"
+              style={styles.actionButton}
+            />
+          )}
           <Button
             title="Back to Group"
             onPress={goBackToGroup}
@@ -177,38 +181,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-
-  signatureCard: {
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border.default,
-    padding: SPACING.xl,
-    marginTop: SPACING.xxxl,
-    alignItems: 'center',
-    width: '100%',
+  swapSummary: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    textAlign: 'center',
+    marginTop: SPACING.md,
   },
-  signatureLabel: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: SPACING.sm,
-  },
-  signatureText: {
+  groupLine: {
     color: COLORS.text.accent,
-    fontSize: FONT.size.md,
+    fontSize: FONT.size.sm,
     fontWeight: FONT.weight.semibold,
     textAlign: 'center',
+    marginTop: SPACING.md,
   },
-  tapHint: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    marginTop: SPACING.xs,
-    textAlign: 'center',
-  },
-
   actions: {
     width: '100%',
     marginTop: SPACING.xxxl,

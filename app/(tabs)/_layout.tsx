@@ -18,7 +18,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="activity"
-        options={{ title: 'Activity' }}
+        options={{ title: 'Transactions' }}
       />
       <Tabs.Screen
         name="wallet"
