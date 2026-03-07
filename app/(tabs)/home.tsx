@@ -56,6 +56,9 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const groups = useAppStore((s) => s.groups);
+  const unreadNotifications = useAppStore(
+    (s) => s.notifications.filter((notification) => !notification.read).length,
+  );
   const getBalances = useAppStore((s) => s.getBalances);
 
   const summaryTotals = useMemo(() => {
@@ -140,12 +143,38 @@ export default function Home() {
             {user.name || 'Friend'} 👋
           </Text>
         </View>
-        <TouchableOpacity onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push('/(tabs)/profile');
-        }}>
-          <Avatar name={user.name || 'Me'} size={44} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.bellButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/notifications' as any);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={COLORS.text.primary}
+            />
+            {unreadNotifications > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(tabs)/profile');
+            }}
+            activeOpacity={0.7}
+          >
+            <Avatar name={user.name || 'Me'} size={44} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Overall Balance Card */}
@@ -326,6 +355,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  bellButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg.secondary,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: COLORS.text.white,
+    fontSize: 10,
+    fontWeight: FONT.weight.bold,
   },
   greeting: {
     color: COLORS.text.secondary,

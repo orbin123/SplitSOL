@@ -11,7 +11,7 @@ import {
   Transaction,
   UserProfile,
 } from '@/types';
-import { generateId } from '@/utils/formatters';
+import { formatCurrency, generateId } from '@/utils/formatters';
 import { calculateBalances, simplifyDebts } from '@/utils/calculations';
 
 interface LegacyPersistedState {
@@ -142,9 +142,34 @@ export const useAppStore = create<AppState>()(
           timestamp: tx.timestamp ?? new Date().toISOString(),
         };
 
-        set((state) => ({
-          transactions: [nextTransaction, ...state.transactions],
-        }));
+        set((state) => {
+          const group = state.groups.find((item) => item.id === nextTransaction.groupId);
+          const payer =
+            group?.members.find(
+              (member) => member.walletAddress === nextTransaction.payerWallet,
+            )?.name ?? 'Someone';
+
+          const nextNotifications =
+            nextTransaction.status === 'confirmed' && group
+              ? [
+                  {
+                    id: generateId(),
+                    type: 'settlement' as const,
+                    relatedGroupId: group.id,
+                    relatedPaymentId: nextTransaction.id,
+                    message: `${payer} settled ${formatCurrency(nextTransaction.amountUSDC)} in ${group.name}.`,
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                  },
+                  ...state.notifications,
+                ]
+              : state.notifications;
+
+          return {
+            transactions: [nextTransaction, ...state.transactions],
+            notifications: nextNotifications,
+          };
+        });
 
         return nextTransaction.id;
       },
@@ -217,7 +242,21 @@ export const useAppStore = create<AppState>()(
           inviteCode: id.slice(0, 8),
         };
 
-        set((state) => ({ groups: [...state.groups, group] }));
+        set((state) => ({
+          groups: [...state.groups, group],
+          notifications: [
+            {
+              id: generateId(),
+              type: 'invite',
+              relatedGroupId: id,
+              relatedPaymentId: null,
+              message: `You were added to ${name}.`,
+              timestamp: new Date().toISOString(),
+              read: false,
+            },
+            ...state.notifications,
+          ],
+        }));
         return id;
       },
 
@@ -227,27 +266,50 @@ export const useAppStore = create<AppState>()(
         })),
 
       addMember: (groupId, name, walletAddress, contactId = null) =>
-        set((state) => ({
-          groups: state.groups.map((group) =>
-            group.id === groupId
-              ? {
-                  ...group,
-                  members: [
-                    ...group.members,
-                    {
-                      id: generateId(),
-                      name,
-                      walletAddress: walletAddress ?? null,
-                      contactId:
-                        contactId ??
-                        getContactIdByWallet(state.contacts, walletAddress ?? null),
-                      isCurrentUser: false,
-                    },
-                  ],
-                }
-              : group,
-          ),
-        })),
+        set((state) => {
+          const shouldNotifyCurrentUser =
+            walletAddress === state.user.walletAddress ||
+            (!!state.user.name && name === state.user.name);
+
+          return {
+            groups: state.groups.map((group) =>
+              group.id === groupId
+                ? {
+                    ...group,
+                    members: [
+                      ...group.members,
+                      {
+                        id: generateId(),
+                        name,
+                        walletAddress: walletAddress ?? null,
+                        contactId:
+                          contactId ??
+                          getContactIdByWallet(state.contacts, walletAddress ?? null),
+                        isCurrentUser: false,
+                      },
+                    ],
+                  }
+                : group,
+            ),
+            notifications: shouldNotifyCurrentUser
+              ? [
+                  {
+                    id: generateId(),
+                    type: 'invite',
+                    relatedGroupId: groupId,
+                    relatedPaymentId: null,
+                    message: `You were added to ${
+                      state.groups.find((group) => group.id === groupId)?.name ??
+                      'a group'
+                    }.`,
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                  },
+                  ...state.notifications,
+                ]
+              : state.notifications,
+          };
+        }),
 
       updateMemberWallet: (groupId, memberId, wallet) =>
         set((state) => ({

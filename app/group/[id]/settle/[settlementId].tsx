@@ -52,6 +52,7 @@ export default function Settlement() {
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const addSettlement = useAppStore((s) => s.addSettlement);
   const addTransaction = useAppStore((s) => s.addTransaction);
+  const addNotification = useAppStore((s) => s.addNotification);
   const updateContactLastTransaction = useAppStore(
     (s) => s.updateContactLastTransaction,
   );
@@ -275,6 +276,19 @@ export default function Settlement() {
     router,
   ]);
 
+  const handleSendReminder = useCallback(() => {
+    if (!group || !currentUser || !recipient) return;
+
+    addNotification({
+      type: 'reminder',
+      relatedGroupId: group.id,
+      relatedPaymentId: null,
+      message: `Reminder: ${currentUser.name} owes ${formatCurrency(debt.amount)} to ${recipient.name} in ${group.name}.`,
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Reminder Sent', 'A local reminder has been added to notifications.');
+  }, [addNotification, currentUser, debt?.amount, group, recipient]);
+
   if (!group) {
     return (
       <View style={styles.container}>
@@ -456,6 +470,13 @@ export default function Settlement() {
               This debt belongs to {currentUser.name}. Open a debt where you are
               the payer to continue.
             </Text>
+            <View style={styles.promptAction}>
+              <Button
+                title="Send Reminder"
+                onPress={handleSendReminder}
+                variant="secondary"
+              />
+            </View>
           </Card>
         )}
 
