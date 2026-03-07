@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,14 +19,11 @@ import {
   buildMemo,
   truncateAddress,
 } from '@/utils/formatters';
-import { buildSOLTransfer, addMemo, getExplorerUrl } from '@/utils/solana';
+import { buildSOLTransfer, buildUSDCTransfer, addMemo, getExplorerUrl } from '@/utils/solana';
 import { executeSettlement } from '@/utils/mwa';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS, SOLANA } from '@/utils/constants';
 
 type SettleStatus = 'idle' | 'processing' | 'confirming' | 'failed';
-
-// Devnet testing rate — replace with a price oracle for production
-const MOCK_INR_TO_SOL = 0.001;
 
 export default function Settlement() {
   const { id, settlementId } = useLocalSearchParams<{
@@ -41,6 +38,26 @@ export default function Settlement() {
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const addSettlement = useAppStore((s) => s.addSettlement);
 
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const checkConnectivity = async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        await fetch('https://api.devnet.solana.com', {
+          method: 'HEAD',
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        setIsOffline(false);
+      } catch {
+        setIsOffline(true);
+      }
+    };
+    checkConnectivity();
+  }, [status]);
+
   const [fromId, toId] = settlementId?.split('_') ?? [];
 
   const debts = useMemo(() => getSimplifiedDebts(id), [getSimplifiedDebts, id]);
@@ -52,7 +69,8 @@ export default function Settlement() {
 
   const currentUser = debt?.from;
   const recipient = debt?.to;
-  const amountInSOL = debt ? debt.amount * MOCK_INR_TO_SOL : 0;
+  const isDevnet = SOLANA.CLUSTER === 'devnet';
+  const amountInSOL = debt && isDevnet ? debt.amount * SOLANA.DEVNET_USDC_TO_SOL : 0;
   const recipientWallet = recipient?.walletAddress;
 
   const handleSettle = useCallback(async () => {
@@ -69,11 +87,9 @@ export default function Settlement() {
     setStatus('processing');
 
     try {
-      let transaction = await buildSOLTransfer(
-        walletAddress,
-        recipientWallet,
-        amountInSOL,
-      );
+      const transaction = isDevnet
+        ? await buildSOLTransfer(walletAddress, recipientWallet, amountInSOL)
+        : await buildUSDCTransfer(walletAddress, recipientWallet, debt.amount);
 
       const memoText = buildMemo(
         group.name,
@@ -81,7 +97,7 @@ export default function Settlement() {
         recipient.name,
         debt.amount,
       );
-      transaction = addMemo(transaction, memoText);
+      addMemo(transaction, memoText);
 
       setStatus('confirming');
 
@@ -127,6 +143,7 @@ export default function Settlement() {
     group,
     currentUser,
     recipient,
+    isDevnet,
     amountInSOL,
     addSettlement,
     router,
@@ -170,7 +187,7 @@ export default function Settlement() {
   }
 
   const isProcessing = status === 'processing' || status === 'confirming';
-  const canSettle = !!walletAddress && !!recipientWallet && !isProcessing;
+  const canSettle = !!walletAddress && !!recipientWallet && !isProcessing && !isOffline;
 
   return (
     <View style={styles.container}>
@@ -202,12 +219,17 @@ export default function Settlement() {
           </View>
 
           <Text style={styles.summaryLabel}>
-            {currentUser.isCurrentUser ? 'You owe' : `${currentUser.name} owes`}
+            {currentUser.isCurrentUser ? 'Pay' : `${currentUser.name} pays`}
           </Text>
           <Text style={styles.summaryAmount}>
             {formatCurrency(debt.amount)}
           </Text>
           <Text style={styles.summaryRecipient}>to {recipient.name}</Text>
+          {isDevnet && (
+            <Text style={styles.summarySolNote}>
+              ≈ {amountInSOL.toFixed(4)} SOL on Devnet
+            </Text>
+          )}
         </View>
 
         {/* Transaction Details */}
@@ -215,11 +237,23 @@ export default function Settlement() {
           <DetailRow label="Group" value={`${group.emoji} ${group.name}`} />
           <View style={styles.divider} />
           <DetailRow
-            label="Amount (SOL)"
-            value={`${amountInSOL.toFixed(4)} SOL`}
+            label="Amount (USDC)"
+            value={formatCurrency(debt.amount)}
           />
+          {isDevnet && (
+            <>
+              <View style={styles.divider} />
+              <DetailRow
+                label="≈ Devnet SOL"
+                value={`${amountInSOL.toFixed(4)} SOL`}
+              />
+            </>
+          )}
           <View style={styles.divider} />
-          <DetailRow label="Network" value="Solana Devnet" />
+          <DetailRow
+            label="Network"
+            value={SOLANA.CLUSTER === 'devnet' ? 'Solana Devnet' : 'Solana Mainnet'}
+          />
           {recipientWallet && (
             <>
               <View style={styles.divider} />
@@ -257,6 +291,17 @@ export default function Settlement() {
           </Card>
         )}
 
+        {/* Offline warning */}
+        {isOffline && (
+          <Card style={styles.promptCard}>
+            <Text style={styles.promptIcon}>📡</Text>
+            <Text style={styles.promptTitle}>You're offline</Text>
+            <Text style={styles.promptSub}>
+              A network connection is required to settle on-chain. Your group data is still available from cache.
+            </Text>
+          </Card>
+        )}
+
         {/* Failure feedback */}
         {status === 'failed' && (
           <Card style={styles.failedCard}>
@@ -274,13 +319,15 @@ export default function Settlement() {
       <View style={styles.bottomBar}>
         <Button
           title={
-            status === 'processing'
-              ? 'Building Transaction...'
-              : status === 'confirming'
-                ? 'Confirming on Solana...'
-                : status === 'failed'
-                  ? 'Retry Settlement'
-                  : 'Settle Now'
+            isOffline
+              ? 'No Connection'
+              : status === 'processing'
+                ? 'Building Transaction...'
+                : status === 'confirming'
+                  ? 'Confirming on Solana...'
+                  : status === 'failed'
+                    ? 'Retry Settlement'
+                    : 'Settle Now'
           }
           onPress={handleSettle}
           variant={status === 'failed' ? 'danger' : 'primary'}
@@ -407,6 +454,11 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.lg,
     fontWeight: FONT.weight.semibold,
     marginTop: SPACING.xs,
+  },
+  summarySolNote: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.sm,
+    marginTop: SPACING.sm,
   },
 
   // Details Card

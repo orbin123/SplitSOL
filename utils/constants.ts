@@ -76,6 +76,8 @@ export const SOLANA = {
   MEMO_PROGRAM_ID: 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
   EXPLORER_BASE: 'https://explorer.solana.com',
   CLUSTER: 'devnet' as const,
+  /** Devnet only: 1 USDC ≈ X SOL (for testing when USDC not available) */
+  DEVNET_USDC_TO_SOL: 0.001,
 };
 
 export const APP = {
@@ -84,7 +86,7 @@ export const APP = {
   IDENTITY_URI: 'https://splitsol.app',
   MAX_GROUP_MEMBERS: 20,
   MAX_EXPENSE_DESCRIPTION: 100,
-  CURRENCY_SYMBOL: '₹',
+  CURRENCY_SYMBOL: 'USDC',
   USDC_DECIMALS: 6,
 };
 

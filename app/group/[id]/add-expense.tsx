@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -19,7 +20,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatCurrency } from '@/utils/formatters';
-import { COLORS, GRADIENTS, SPACING, FONT, RADIUS, APP } from '@/utils/constants';
+import { COLORS, GRADIENTS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
 export default function AddExpense() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -60,14 +61,26 @@ export default function AddExpense() {
     );
   };
 
+  const validateExpense = (): string | null => {
+    if (!description.trim()) return 'Please enter a description';
+    if (!amount || parsedAmount <= 0) return 'Please enter a valid amount';
+    if (parsedAmount > 1000000) return 'Amount seems too large. Please double-check.';
+    if (!paidBy) return 'Select who paid';
+    if (splitAmong.length === 0) return 'Select at least one person to split with';
+    return null;
+  };
+
   const handleAdd = () => {
-    const trimmedDesc = description.trim();
-    if (!trimmedDesc || parsedAmount <= 0) return;
-    if (!paidBy || splitAmong.length === 0) return;
+    const error = validateExpense();
+    if (error) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Missing Info', error);
+      return;
+    }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     addExpense(id, {
-      description: trimmedDesc,
+      description: description.trim(),
       amount: parsedAmount,
       paidBy,
       splitAmong,
@@ -111,7 +124,6 @@ export default function AddExpense() {
 
           <Text style={styles.amountLabel}>AMOUNT</Text>
           <View style={styles.amountInputRow}>
-            <Text style={styles.currencySymbol}>{APP.CURRENCY_SYMBOL}</Text>
             <TextInput
               style={styles.amountInput}
               value={amount}
@@ -123,7 +135,7 @@ export default function AddExpense() {
             />
           </View>
           <View style={styles.currencyBadge}>
-            <Text style={styles.currencyText}>INR</Text>
+            <Text style={styles.currencyText}>USDC</Text>
             <Ionicons
               name="chevron-down"
               size={14}
@@ -293,12 +305,6 @@ const styles = StyleSheet.create({
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  currencySymbol: {
-    color: COLORS.text.primary,
-    fontSize: 36,
-    fontWeight: FONT.weight.extrabold,
-    marginRight: 4,
   },
   amountInput: {
     color: COLORS.text.primary,

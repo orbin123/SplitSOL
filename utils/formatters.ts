@@ -1,22 +1,20 @@
-import { APP } from './constants';
-
 // Truncate wallet address: "7xKXWbz5abc123def456" → "7xKX...f456"
 export const truncateAddress = (address: string, chars = 4): string => {
   if (!address) return '';
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 };
 
-// Format currency: 2000 → "₹2,000.00"
+// Format currency: 25 → "25.00 USDC"
 export const formatCurrency = (amount: number): string => {
-  return `${APP.CURRENCY_SYMBOL}${amount.toLocaleString('en-IN', {
+  return `${amount.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`;
+  })} USDC`;
 };
 
-// Format USDC: 10.5 → "10.50 USDC"
+// Format USDC: 10.5 → "10.50 USDC" (alias for formatCurrency)
 export const formatUSDC = (amount: number): string => {
-  return `${amount.toFixed(2)} USDC`;
+  return formatCurrency(amount);
 };
 
 // Relative time: "2 hours ago", "Just now"

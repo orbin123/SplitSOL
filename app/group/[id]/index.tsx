@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -51,7 +52,10 @@ export default function GroupDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const group = useAppStore((s) => s.getGroup(id));
+  const deleteGroup = useAppStore((s) => s.deleteGroup);
+  const removeMember = useAppStore((s) => s.removeMember);
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
+  const getBalances = useAppStore((s) => s.getBalances);
   const [activeTab, setActiveTab] = useState<Tab>('expenses');
 
   if (!group) {
@@ -146,7 +150,41 @@ export default function GroupDetail() {
           {group.name}
         </Text>
         <View style={{ flex: 1 }} />
-        <TouchableOpacity activeOpacity={0.7}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            Alert.alert(
+              'Group Options',
+              `Manage "${group.name}"`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Group',
+                  style: 'destructive',
+                  onPress: () => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    Alert.alert(
+                      'Delete Group',
+                      'This will permanently delete this group and all its expenses. This cannot be undone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => {
+                            deleteGroup(id);
+                            router.back();
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+              ],
+            );
+          }}
+        >
           <Text style={styles.editBtn}>Edit</Text>
         </TouchableOpacity>
       </View>
@@ -154,9 +192,49 @@ export default function GroupDetail() {
       {/* Members Row */}
       <View style={styles.membersRow}>
         {group.members.slice(0, 6).map((member) => (
-          <View key={member.id} style={styles.memberAvatar}>
+          <TouchableOpacity
+            key={member.id}
+            style={styles.memberAvatar}
+            activeOpacity={0.7}
+            onLongPress={() => {
+              if (member.isCurrentUser) return;
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const balances = getBalances(id);
+              const memberBalance = balances.find((b) => b.memberId === member.id);
+              const hasBalance = memberBalance && Math.abs(memberBalance.amount) > 0.01;
+
+              if (hasBalance) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                Alert.alert(
+                  'Pending Balance',
+                  `${member.name} has an outstanding balance of ${formatCurrency(Math.abs(memberBalance.amount))}. Removing them may result in unresolvable debts. Remove anyway?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: () => removeMember(id, member.id),
+                    },
+                  ],
+                );
+              } else {
+                Alert.alert(
+                  'Remove Member',
+                  `Remove ${member.name} from this group?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: () => removeMember(id, member.id),
+                    },
+                  ],
+                );
+              }
+            }}
+          >
             <Avatar name={member.name} size={36} />
-          </View>
+          </TouchableOpacity>
         ))}
         <TouchableOpacity
           style={styles.addMemberBtn}

@@ -9,7 +9,7 @@ export interface Member {
   export interface Expense {
     id: string;
     description: string;
-    amount: number;                // In local currency (e.g., INR)
+    amount: number;                // In USDC
     paidBy: string;                // Member ID
     splitAmong: string[];          // Array of Member IDs
     splitType: 'equal' | 'custom'; // Future: support custom splits
