@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
-import { QRScanner } from '@/components/wallet/QRScanner';
-import { parseContactQrPayload } from '@/utils/contactQr';
+import { QRScanner } from '@/components/ui/QRScanner';
+import { SplitSolQrPayload } from '@/utils/contactQr';
 
 export default function ScanContactScreen() {
   const router = useRouter();
@@ -12,20 +12,10 @@ export default function ScanContactScreen() {
   const addContact = useAppStore((s) => s.addContact);
   const [isHandling, setIsHandling] = useState(false);
 
-  const handleScan = (data: string) => {
+  const handleScan = (payload: SplitSolQrPayload) => {
     if (isHandling) return false;
 
     setIsHandling(true);
-
-    const payload = parseContactQrPayload(data);
-    if (!payload) {
-      Alert.alert(
-        'Invalid QR Code',
-        'This QR code is not a valid SplitSOL contact.',
-        [{ text: 'OK', onPress: () => setIsHandling(false) }],
-      );
-      return false;
-    }
 
     if (payload.wallet === user.walletAddress) {
       Alert.alert(

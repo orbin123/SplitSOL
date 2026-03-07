@@ -1,11 +1,18 @@
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+export interface SplitSolQrPayloadBase {
+  app: 'splitsol';
+  type: 'contact' | 'group_invite';
+}
+
 export interface SplitSolContactQrPayload {
   app: 'splitsol';
   type: 'contact';
   name: string;
   wallet: string;
 }
+
+export type SplitSolQrPayload = SplitSolContactQrPayload;
 
 export const isValidWalletAddress = (value: string): boolean => {
   return SOLANA_ADDRESS_REGEX.test(value);
@@ -26,6 +33,13 @@ export const buildContactQrPayload = (
 export const parseContactQrPayload = (
   rawValue: string,
 ): SplitSolContactQrPayload | null => {
+  const parsed = parseSplitSolQrPayload(rawValue);
+  return parsed?.type === 'contact' ? parsed : null;
+};
+
+export const parseSplitSolQrPayload = (
+  rawValue: string,
+): SplitSolQrPayload | null => {
   try {
     const parsed = JSON.parse(rawValue) as Partial<SplitSolContactQrPayload>;
     const name = parsed.name?.trim();

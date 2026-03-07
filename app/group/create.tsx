@@ -18,8 +18,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { QRScanner } from '@/components/wallet/QRScanner';
-import { parseContactQrPayload } from '@/utils/contactQr';
+import { QRScanner } from '@/components/ui/QRScanner';
+import { SplitSolQrPayload } from '@/utils/contactQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
 const EMOJI_OPTIONS = [
@@ -65,19 +65,9 @@ export default function CreateGroup() {
     );
   };
 
-  const handleScanContact = (data: string) => {
-    const payload = parseContactQrPayload(data);
-
-    if (!payload) {
-      Alert.alert(
-        'Invalid QR Code',
-        'This QR code is not a valid SplitSOL contact.',
-      );
-      return false;
-    }
-
+  const handleScanContact = (payload: SplitSolQrPayload) => {
     if (payload.wallet === user.walletAddress) {
-      Alert.alert('This is your QR code', 'You are already included in the group.');
+      Alert.alert("Can't add yourself", 'You are already included in the group.');
       return false;
     }
 
