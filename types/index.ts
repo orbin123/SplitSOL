@@ -2,6 +2,7 @@ export interface UserProfile {
   name: string;
   walletAddress: string | null;
   walletAuthToken: string | null;
+  notificationsEnabled: boolean;
   createdAt: string;
 }
 
@@ -128,6 +129,7 @@ export interface AppState {
     walletAddress: string | null,
     authToken: string | null,
   ) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
   addContact: (
     contact: Omit<Contact, 'id' | 'addedAt' | 'lastTransactionAt'> &
       Partial<Pick<Contact, 'id' | 'addedAt' | 'lastTransactionAt'>>,

@@ -1,38 +1,29 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
   Text,
   TextInput,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
   TouchableOpacity,
-  Alert,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppStore } from '@/store/useAppStore';
-import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
-import { truncateAddress } from '@/utils/formatters';
-import { getSOLBalance } from '@/utils/solana';
-import { disconnectWalletSession } from '@/utils/mwa';
+import { useAppStore } from '@/store/useAppStore';
 import { buildContactQrPayload } from '@/utils/contactQr';
-import {
-  COLORS,
-  GRADIENTS,
-  SPACING,
-  FONT,
-  RADIUS,
-  TAB_BAR_HEIGHT,
-  APP,
-  SOLANA,
-} from '@/utils/constants';
+import { APP, COLORS, FONT, RADIUS, SOLANA, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
+import { truncateAddress } from '@/utils/formatters';
+import { disconnectWalletSession } from '@/utils/mwa';
+import { requestNotificationPermission } from '@/utils/notifications';
+import { getSOLBalance } from '@/utils/solana';
 
 let QRCode: any = null;
 try {
@@ -46,10 +37,13 @@ export default function Profile() {
   const user = useAppStore((s) => s.user);
   const contacts = useAppStore((s) => s.contacts);
   const setUser = useAppStore((s) => s.setUser);
+  const setNotificationsEnabled = useAppStore((s) => s.setNotificationsEnabled);
+
   const [balance, setBalance] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(user.name);
+
   const walletAddress = user.walletAddress;
 
   const saveName = () => {
@@ -69,7 +63,7 @@ export default function Profile() {
         await disconnectWalletSession(user.walletAuthToken);
       }
     } catch {
-      // Local logout should still proceed if wallet-side cleanup fails.
+      // Local logout should still proceed if wallet cleanup fails.
     } finally {
       setUser(user.name, null, null);
       router.replace('/(onboarding)/welcome');
@@ -81,11 +75,15 @@ export default function Profile() {
       setBalance(null);
       return;
     }
+
     try {
       setBalance(await getSOLBalance(walletAddress));
     } catch {
       setBalance(null);
-      Alert.alert('Connection Error', 'Unable to fetch balance. Check your internet connection.');
+      Alert.alert(
+        'Connection Error',
+        'Unable to fetch SOL balance. Check your internet connection.',
+      );
     }
   }, [walletAddress]);
 
@@ -103,7 +101,24 @@ export default function Profile() {
     if (!walletAddress) return;
     await Clipboard.setStringAsync(walletAddress);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied!', 'Wallet address copied to clipboard.');
+    Alert.alert('Copied', 'Full wallet address copied to clipboard.');
+  };
+
+  const handleToggleNotifications = async (enabled: boolean) => {
+    if (enabled) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          'Notifications Disabled',
+          'Permission was not granted, so notifications will stay off.',
+        );
+        setNotificationsEnabled(false);
+        return;
+      }
+    }
+
+    setNotificationsEnabled(enabled);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const contactQrValue =
@@ -116,7 +131,7 @@ export default function Profile() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + SPACING.xxl },
+        { paddingTop: insets.top + SPACING.xl },
       ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -127,9 +142,9 @@ export default function Profile() {
         />
       }
     >
-      {/* User Header */}
-      <View style={styles.header}>
-        <Avatar name={user.name || 'Me'} size={80} />
+      <Card style={styles.profileCard}>
+        <Text style={styles.sectionEyebrow}>Profile</Text>
+
         {editingName ? (
           <View style={styles.editNameRow}>
             <TextInput
@@ -143,37 +158,67 @@ export default function Profile() {
               onBlur={saveName}
               selectTextOnFocus
             />
-            <TouchableOpacity onPress={saveName} style={styles.editNameBtn}>
+            <TouchableOpacity onPress={saveName} style={styles.inlineIconButton}>
               <Ionicons name="checkmark-circle" size={28} color={COLORS.bg.accent} />
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
-            style={styles.nameRow}
+            style={styles.row}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setDraftName(user.name);
               setEditingName(true);
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
-            <Text style={styles.userName}>{user.name || 'SplitSOL User'}</Text>
-            <Ionicons name="pencil-outline" size={16} color={COLORS.text.tertiary} />
+            <View style={styles.rowCopy}>
+              <Text style={styles.fieldLabel}>Username</Text>
+              <Text style={styles.primaryValue}>{user.name || 'SplitSOL User'}</Text>
+            </View>
+            <Ionicons name="pencil-outline" size={18} color={COLORS.text.tertiary} />
           </TouchableOpacity>
         )}
-        {walletAddress && (
-          <TouchableOpacity onPress={copyAddress} style={styles.addressRow}>
-            <View style={styles.dot} />
-            <Text style={styles.addressText}>
-              {truncateAddress(walletAddress, 8)}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
 
-      {/* QR Code */}
+        <View style={styles.divider} />
+
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => {
+            void copyAddress();
+          }}
+          activeOpacity={0.75}
+          disabled={!walletAddress}
+        >
+          <View style={styles.rowCopy}>
+            <Text style={styles.fieldLabel}>Connected Wallet</Text>
+            <Text style={styles.secondaryValue}>
+              {walletAddress ? truncateAddress(walletAddress, 8) : 'Not connected'}
+            </Text>
+          </View>
+          {walletAddress && (
+            <Ionicons name="copy-outline" size={18} color={COLORS.text.tertiary} />
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+
+        <View style={styles.row}>
+          <View style={styles.rowCopy}>
+            <Text style={styles.fieldLabel}>Current SOL Balance</Text>
+            <Text style={styles.primaryValue}>
+              {walletAddress && balance !== null ? `${balance.toFixed(3)} SOL` : '--'}
+            </Text>
+          </View>
+          <Text style={styles.networkPill}>
+            {SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
+          </Text>
+        </View>
+      </Card>
+
       {walletAddress && QRCode && contactQrValue && (
         <Card style={styles.qrCard}>
+          <Text style={styles.sectionTitle}>Your QR Code</Text>
           <QRCode
             value={contactQrValue}
             size={184}
@@ -187,113 +232,81 @@ export default function Profile() {
         </Card>
       )}
 
-      <Card
-        style={styles.contactsCard}
-        onPress={() => router.push('/contacts' as any)}
-      >
-        <View style={styles.contactsCopy}>
-          <Text style={styles.contactsTitle}>My Contacts</Text>
-          <Text style={styles.contactsSub}>
-            {contacts.length} SplitSOL member
-            {contacts.length === 1 ? '' : 's'}
-          </Text>
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={COLORS.text.tertiary}
-        />
-      </Card>
-
-      {/* SOL Balance */}
-      {walletAddress && balance !== null && (
-        <LinearGradient
-          colors={GRADIENTS.purple}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.balanceGradient}
-        >
-          <Text style={styles.balanceLabel}>
-            {SOLANA.CLUSTER === 'devnet' ? 'DEVNET' : 'MAINNET'} SOL BALANCE
-          </Text>
-          <Text style={styles.balanceValue}>{balance.toFixed(3)}  SOL</Text>
-        </LinearGradient>
-      )}
-
-      {/* Connect prompt */}
       {!walletAddress && (
         <Card style={styles.connectCard}>
           <Text style={styles.connectPrompt}>
-            Connect your wallet to settle on-chain.
+            Connect your wallet to settle on-chain and share your QR identity.
           </Text>
           <ConnectButton />
         </Card>
       )}
 
-      {/* Settings */}
-      <View style={styles.settingsList}>
-        <SettingsItem
-          icon="notifications-outline"
-          label="Notifications"
-          value="On"
-        />
-        <SettingsItem
-          icon="globe-outline"
-          label="Network"
-          value={SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
-        />
-        <SettingsItem
-          icon="heart-outline"
-          label={`About ${APP.NAME}`}
-          value={`v${APP.VERSION}`}
-        />
-        {walletAddress && (
-          <TouchableOpacity
-            style={styles.settingsRow}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              Alert.alert('Disconnect Wallet', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Disconnect',
-                  style: 'destructive',
-                  onPress: () => {
-                    void handleDisconnect();
-                  },
-                },
-              ]);
-            }}
-          >
-            <Ionicons
-              name="log-out-outline"
-              size={20}
-              color={COLORS.text.danger}
-            />
-            <Text style={[styles.settingsLabel, { color: COLORS.text.danger }]}>
-              Disconnect Wallet
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
-  );
-}
+      <Card style={styles.actionCard} onPress={() => router.push('/contacts' as any)}>
+        <View style={styles.rowCopy}>
+          <Text style={styles.sectionTitle}>My Contacts</Text>
+          <Text style={styles.sectionSub}>
+            {contacts.length} contact{contacts.length === 1 ? '' : 's'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
+      </Card>
 
-function SettingsItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.settingsRow}>
-      <Ionicons name={icon as any} size={20} color={COLORS.text.secondary} />
-      <Text style={styles.settingsLabel}>{label}</Text>
-      <Text style={styles.settingsValue}>{value}</Text>
-    </View>
+      <Card style={styles.toggleCard}>
+        <View style={styles.rowCopy}>
+          <Text style={styles.sectionTitle}>Notification Settings</Text>
+          <Text style={styles.sectionSub}>
+            {user.notificationsEnabled ? 'Enabled' : 'Disabled'}
+          </Text>
+        </View>
+        <Switch
+          value={user.notificationsEnabled}
+          onValueChange={(value) => {
+            void handleToggleNotifications(value);
+          }}
+          trackColor={{ false: COLORS.border.default, true: COLORS.bg.accentSoft }}
+          thumbColor={
+            user.notificationsEnabled ? COLORS.bg.accent : COLORS.text.tertiary
+          }
+        />
+      </Card>
+
+      {walletAddress && (
+        <Card
+          style={styles.disconnectCard}
+          onPress={() => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            Alert.alert('Disconnect Wallet', 'Are you sure?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Disconnect',
+                style: 'destructive',
+                onPress: () => {
+                  void handleDisconnect();
+                },
+              },
+            ]);
+          }}
+        >
+          <View style={styles.rowCopy}>
+            <Text style={styles.disconnectTitle}>Disconnect Wallet</Text>
+            <Text style={styles.sectionSub}>
+              Clears local auth and returns you to onboarding.
+            </Text>
+          </View>
+          <Ionicons name="log-out-outline" size={22} color={COLORS.text.danger} />
+        </Card>
+      )}
+
+      <Card style={styles.actionCard} onPress={() => router.push('/about' as any)}>
+        <View style={styles.rowCopy}>
+          <Text style={styles.sectionTitle}>About {APP.NAME}</Text>
+          <Text style={styles.sectionSub}>
+            Learn how wallet auth and crypto group payments work.
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
+      </Card>
+    </ScrollView>
   );
 }
 
@@ -307,20 +320,56 @@ const styles = StyleSheet.create({
     paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
     gap: SPACING.lg,
   },
-
-  header: {
-    alignItems: 'center',
-    gap: SPACING.sm,
+  profileCard: {
+    gap: SPACING.md,
   },
-  userName: {
+  sectionEyebrow: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  sectionTitle: {
     color: COLORS.text.primary,
-    fontSize: FONT.size.xxl,
-    fontWeight: FONT.weight.bold,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
   },
-  nameRow: {
+  sectionSub: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    marginTop: SPACING.xs,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  rowCopy: {
+    flex: 1,
+  },
+  fieldLabel: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  primaryValue: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.bold,
+    marginTop: SPACING.xs,
+  },
+  secondaryValue: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.md,
+    marginTop: SPACING.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border.default,
   },
   editNameRow: {
     flexDirection: 'row',
@@ -328,34 +377,26 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   editNameInput: {
+    flex: 1,
     color: COLORS.text.primary,
-    fontSize: FONT.size.xxl,
+    fontSize: FONT.size.lg,
     fontWeight: FONT.weight.bold,
     borderBottomWidth: 2,
     borderBottomColor: COLORS.bg.accent,
     paddingVertical: SPACING.xs,
-    minWidth: 120,
-    textAlign: 'center',
   },
-  editNameBtn: {
+  inlineIconButton: {
     padding: SPACING.xs,
   },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.bg.success,
-  },
-  addressText: {
-    color: COLORS.text.secondary,
+  networkPill: {
+    color: COLORS.text.accent,
     fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+    backgroundColor: COLORS.bg.accentSoft,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
   },
-
   qrCard: {
     alignItems: 'center',
     paddingVertical: SPACING.xxl,
@@ -372,42 +413,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  contactsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  contactsCopy: {
-    flex: 1,
-  },
-  contactsTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
-  },
-  contactsSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: 2,
-  },
-
-  balanceGradient: {
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xxl,
-    gap: SPACING.sm,
-  },
-  balanceLabel: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    letterSpacing: 1,
-  },
-  balanceValue: {
-    color: COLORS.text.primary,
-    fontSize: 32,
-    fontWeight: FONT.weight.extrabold,
-  },
-
   connectCard: {
     alignItems: 'center',
     gap: SPACING.md,
@@ -418,33 +423,27 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.md,
     textAlign: 'center',
   },
-
-  settingsList: {
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  settingsRow: {
+  actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border.default,
+    justifyContent: 'space-between',
     gap: SPACING.md,
   },
-  settingsLabel: {
-    flex: 1,
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.medium,
+  toggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
   },
-  settingsValue: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
+  disconnectCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  disconnectTitle: {
+    color: COLORS.text.danger,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
   },
 });

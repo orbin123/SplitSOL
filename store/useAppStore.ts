@@ -28,6 +28,7 @@ const createInitialUser = (): UserProfile => ({
   name: '',
   walletAddress: null,
   walletAuthToken: null,
+  notificationsEnabled: true,
   createdAt: new Date().toISOString(),
 });
 
@@ -66,6 +67,14 @@ export const useAppStore = create<AppState>()(
             name,
             walletAddress,
             walletAuthToken: authToken,
+          },
+        })),
+
+      setNotificationsEnabled: (enabled) =>
+        set((state) => ({
+          user: {
+            ...state.user,
+            notificationsEnabled: enabled,
           },
         })),
 
@@ -150,7 +159,9 @@ export const useAppStore = create<AppState>()(
             )?.name ?? 'Someone';
 
           const nextNotifications =
-            nextTransaction.status === 'confirmed' && group
+            nextTransaction.status === 'confirmed' &&
+            group &&
+            state.user.notificationsEnabled
               ? [
                   {
                     id: generateId(),
@@ -182,6 +193,10 @@ export const useAppStore = create<AppState>()(
         })),
 
       addNotification: (notif) => {
+        if (!get().user.notificationsEnabled) {
+          return '';
+        }
+
         const nextNotification: Notification = {
           ...notif,
           id: notif.id ?? generateId(),
@@ -244,18 +259,20 @@ export const useAppStore = create<AppState>()(
 
         set((state) => ({
           groups: [...state.groups, group],
-          notifications: [
-            {
-              id: generateId(),
-              type: 'invite',
-              relatedGroupId: id,
-              relatedPaymentId: null,
-              message: `You were added to ${name}.`,
-              timestamp: new Date().toISOString(),
-              read: false,
-            },
-            ...state.notifications,
-          ],
+          notifications: state.user.notificationsEnabled
+            ? [
+                {
+                  id: generateId(),
+                  type: 'invite',
+                  relatedGroupId: id,
+                  relatedPaymentId: null,
+                  message: `You were added to ${name}.`,
+                  timestamp: new Date().toISOString(),
+                  read: false,
+                },
+                ...state.notifications,
+              ]
+            : state.notifications,
         }));
         return id;
       },
@@ -291,7 +308,7 @@ export const useAppStore = create<AppState>()(
                   }
                 : group,
             ),
-            notifications: shouldNotifyCurrentUser
+            notifications: shouldNotifyCurrentUser && state.user.notificationsEnabled
               ? [
                   {
                     id: generateId(),
@@ -450,6 +467,8 @@ export const useAppStore = create<AppState>()(
               legacyState.user?.walletAuthToken ??
               legacyState.walletAuthToken ??
               null,
+            notificationsEnabled:
+              legacyState.user?.notificationsEnabled ?? true,
             createdAt:
               legacyState.user?.createdAt ?? new Date().toISOString(),
           },
