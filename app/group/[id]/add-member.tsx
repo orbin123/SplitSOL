@@ -113,8 +113,8 @@ export default function AddMember() {
     if (!canAddManual) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const wallet = trimmedWallet || null;
-    const memberId = addMember({ name: trimmedName, walletAddress: wallet, isFavorite: false });
-    addGroupMember(id, trimmedName, wallet, memberId);
+    const memberId = addMember({ name: trimmedName, walletAddress: wallet ?? '', isFavorite: false });
+    addGroupMember(id, trimmedName, wallet ?? undefined, memberId);
     setManualName('');
     setManualWallet('');
     setMode('list');

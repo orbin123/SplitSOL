@@ -100,7 +100,7 @@ export default function CreateGroup() {
   const handleAddManual = () => {
     if (!canAddManual) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const wallet = manualWallet.trim() || null;
+    const wallet = manualWallet.trim() || '';
     const memberId = addMember({
       name: manualName.trim(),
       walletAddress: wallet,
