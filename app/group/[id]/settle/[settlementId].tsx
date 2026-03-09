@@ -196,9 +196,10 @@ export default function Settlement() {
       setPayStatus('idle');
       payStatusRef.current = 'idle';
 
-      router.replace(
-        `/settle/success?txId=${signature}&groupId=${group.id}&amount=${debt.amount}&from=${encodeURIComponent(currentUser.name)}&to=${encodeURIComponent(recipient.name)}&groupName=${encodeURIComponent(group.name)}&groupEmoji=${encodeURIComponent(group.emoji)}&method=${txResult.paymentMethod}&recipientWallet=${encodeURIComponent(recipientWallet)}&settledAt=${encodeURIComponent(settledAt)}&memo=${encodeURIComponent(memo)}` as any,
-      );
+      const successUrl = `/settle/success?txId=${signature}&groupId=${group.id}&amount=${debt.amount}&from=${encodeURIComponent(currentUser.name)}&to=${encodeURIComponent(recipient.name)}&groupName=${encodeURIComponent(group.name)}&groupEmoji=${encodeURIComponent(group.emoji)}&method=${txResult.paymentMethod}&recipientWallet=${encodeURIComponent(recipientWallet)}&settledAt=${encodeURIComponent(settledAt)}&memo=${encodeURIComponent(memo)}`;
+      setTimeout(() => {
+        router.replace(successUrl as any);
+      }, 500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Payment failed. Please try again.';
       setErrorMsg(msg);
