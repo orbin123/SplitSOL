@@ -438,6 +438,28 @@ export const useAppStore = create<AppState>()(
           })),
         })),
 
+      confirmSettlement: (groupId, settlementId, txSignature, paymentMethod) =>
+        set((state) => ({
+          groups: state.groups.map((group) =>
+            group.id === groupId
+              ? {
+                ...group,
+                settlements: group.settlements.map((s) =>
+                  s.id === settlementId
+                    ? {
+                      ...s,
+                      status: 'confirmed' as const,
+                      txSignature,
+                      paymentMethod,
+                      confirmedAt: new Date().toISOString(),
+                    }
+                    : s,
+                ),
+              }
+              : group,
+          ),
+        })),
+
       getGroup: (groupId) => {
         return get().groups.find((group) => group.id === groupId);
       },

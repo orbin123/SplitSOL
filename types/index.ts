@@ -51,6 +51,8 @@ export interface Settlement {
   amountUSDC?: number;
   status: 'pending' | 'processing' | 'confirmed' | 'failed';
   txSignature?: string;
+  paymentMethod?: string;
+  confirmedAt?: string;
   memo?: string;
   settledAt: string;
   explorerUrl?: string;
@@ -164,6 +166,12 @@ export interface AppState {
   removeExpense: (groupId: string, expenseId: string) => void;
   addSettlement: (settlement: Omit<Settlement, 'id'>) => void;
   updateSettlement: (settlementId: string, updates: Partial<Settlement>) => void;
+  confirmSettlement: (
+    groupId: string,
+    settlementId: string,
+    txSignature: string,
+    paymentMethod?: string,
+  ) => void;
   getGroup: (groupId: string) => Group | undefined;
   getBalances: (groupId: string) => Balance[];
   getSimplifiedDebts: (groupId: string) => SimplifiedDebt[];

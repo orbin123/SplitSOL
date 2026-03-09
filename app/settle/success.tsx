@@ -83,7 +83,7 @@ export default function SettleSuccessScreen() {
             `👤 From: ${params.from}`,
             `👤 To: ${params.to}`,
             `📁 Group: ${params.groupEmoji} ${params.groupName}`,
-            `🔗 Method: ${params.method === 'autopay' ? 'AutoPay (SOL → USDC)' : 'Direct USDC Transfer'}`,
+            `🔗 Method: ${params.method === 'SOL_EQUIVALENT' ? 'AutoPay (SOL Equivalent, devnet)' : params.method === 'JUPITER_SWAP' ? 'AutoPay (Jupiter SOL → USDC)' : 'Direct USDC Transfer'}`,
             `📝 Memo: ${params.memo || `SplitSOL | ${params.groupName} | ${params.from} → ${params.to} | ${amount.toFixed(2)} USDC`}`,
             `⏱ Time: ${formatDateTime(timestamp)}`,
             `🌐 Network: Solana Devnet`,
@@ -183,8 +183,10 @@ export default function SettleSuccessScreen() {
                     <DetailRow
                         label="Method"
                         value={
-                            params.method === 'autopay'
-                                ? 'AutoPay (SOL → USDC)'
+                            params.method === 'SOL_EQUIVALENT'
+                                ? 'AutoPay (SOL equivalent, devnet)'
+                                : params.method === 'JUPITER_SWAP'
+                                ? 'AutoPay (Jupiter SOL → USDC)'
                                 : 'Direct USDC'
                         }
                     />

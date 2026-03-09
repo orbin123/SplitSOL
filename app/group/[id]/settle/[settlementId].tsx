@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
-  View,
   TouchableOpacity,
+  View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -15,11 +16,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
 import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { buildMemo, formatCurrency, truncateAddress } from '@/utils/formatters';
 import { getSOLBalanceWithRetry, getUSDCBalance } from '@/utils/solana';
+import {
+  buildSettlementTransaction,
+  getJupiterSolPrice,
+  type AutoPayMethod,
+} from '@/utils/autopay';
+import { executeSettlement } from '@/utils/mwa';
 
-type PaymentMethod = 'direct_usdc' | 'autopay';
+type PayStatus = 'idle' | 'building' | 'signing' | 'error';
 
 const SLIDER_WIDTH = 300;
 const THUMB_SIZE = 56;
@@ -32,9 +40,6 @@ export default function Settlement() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('direct_usdc');
-  const [isSliding, setIsSliding] = useState(false);
 
   const group = useAppStore((s) => s.getGroup(id));
   const walletAddress = useAppStore((s) => s.user.walletAddress);
@@ -53,105 +58,166 @@ export default function Settlement() {
   const recipient = debt?.to;
   const recipientWallet = recipient?.walletAddress;
 
+  // Balances & conversion
   const [usdcBalance, setUsdcBalance] = useState(0);
   const [solBalance, setSolBalance] = useState(0);
+  const [solUsdcRate, setSolUsdcRate] = useState<number>(1 / SOLANA.DEVNET_USDC_TO_SOL);
 
   useEffect(() => {
     if (!walletAddress) return;
     Promise.all([
-      getSOLBalanceWithRetry(walletAddress!).catch(() => null),
-      getUSDCBalance(walletAddress!).catch(() => null),
-    ]).then(([sol, usdc]) => {
+      getSOLBalanceWithRetry(walletAddress).catch(() => null),
+      getUSDCBalance(walletAddress).catch(() => null),
+      getJupiterSolPrice(),
+    ]).then(([sol, usdc, livePrice]) => {
       if (sol !== null) setSolBalance(sol);
       if (usdc !== null) setUsdcBalance(usdc);
+      if (livePrice !== null) setSolUsdcRate(livePrice);
     });
   }, [walletAddress]);
+
+  // Detect payment method from balances
+  const hasEnoughUsdc = debt ? usdcBalance >= debt.amount : false;
+  const estimatedSOL = debt ? debt.amount / solUsdcRate : 0;
+
+  // Payment flow state
+  const [payStatus, setPayStatus] = useState<PayStatus>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const payStatusRef = useRef<PayStatus>('idle');
+
+  // Keep ref in sync for panResponder access without re-creating it
+  useEffect(() => {
+    payStatusRef.current = payStatus;
+  }, [payStatus]);
 
   // Slide-to-pay animation
   const slideAnim = useRef(new Animated.Value(0)).current;
   const chevronAnim = useRef(new Animated.Value(0)).current;
 
-  // Chevron pulse animation
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(chevronAnim, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(chevronAnim, {
-          toValue: 0,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
+        Animated.timing(chevronAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(chevronAnim, { toValue: 0, duration: 1200, useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, [chevronAnim]);
 
-  const handlePaymentComplete = useCallback(() => {
+  const resetSlider = useCallback(() => {
+    Animated.spring(slideAnim, { toValue: 0, friction: 5, useNativeDriver: true }).start();
+  }, [slideAnim]);
+
+  const handlePaymentComplete = useCallback(async () => {
     if (!group || !currentUser || !recipient || !debt) return;
+    if (payStatusRef.current !== 'idle') return;
+
+    if (!recipientWallet) {
+      showAlert('Cannot Pay', 'This member has no wallet address linked. Ask them to share their QR code.');
+      resetSlider();
+      return;
+    }
+    if (!walletAddress) {
+      showAlert('Not Connected', 'Connect your wallet to make a payment.');
+      resetSlider();
+      return;
+    }
 
     const memo = buildMemo(group.name, currentUser.name, recipient.name, debt.amount);
-    const mockSignature = `mock_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const settledAt = new Date().toISOString();
 
-    addSettlement({
-      groupId: group.id,
-      from: currentUser.id,
-      to: recipient.id,
-      amount: debt.amount,
-      status: 'confirmed',
-      txSignature: mockSignature,
-      memo,
-      settledAt,
-      fromWallet: walletAddress || '',
-      toWallet: recipientWallet || '',
-    });
+    setPayStatus('building');
+    payStatusRef.current = 'building';
 
-    addTransaction({
-      groupId: group.id,
-      payerWallet: walletAddress || '',
-      receiverWallet: recipientWallet || '',
-      amountUSDC: debt.amount,
-      status: 'confirmed',
-      signature: mockSignature,
-      timestamp: settledAt,
-      memo,
-      swap:
-        paymentMethod === 'autopay'
+    try {
+      // Build the optimal transaction (USDC direct, SOL equivalent, or Jupiter swap)
+      const txResult = await buildSettlementTransaction(
+        {
+          fromWallet: walletAddress,
+          toWallet: recipientWallet,
+          amountUSDC: debt.amount,
+          cluster: SOLANA.CLUSTER,
+        },
+        memo,
+      );
+
+      setPayStatus('signing');
+      payStatusRef.current = 'signing';
+
+      // Open Solflare for signing
+      const { signature, confirmed } = await executeSettlement(txResult.transaction);
+
+      const settledAt = new Date().toISOString();
+
+      addSettlement({
+        groupId: group.id,
+        from: currentUser.id,
+        to: recipient.id,
+        amount: debt.amount,
+        status: 'confirmed',
+        txSignature: signature,
+        paymentMethod: txResult.paymentMethod,
+        confirmedAt: settledAt,
+        memo,
+        settledAt,
+        fromWallet: walletAddress,
+        toWallet: recipientWallet,
+      });
+
+      addTransaction({
+        groupId: group.id,
+        payerWallet: walletAddress,
+        receiverWallet: recipientWallet,
+        amountUSDC: debt.amount,
+        status: confirmed ? 'confirmed' : 'pending',
+        signature,
+        timestamp: settledAt,
+        memo,
+        swap: txResult.paymentMethod !== 'USDC'
           ? {
             inputToken: 'SOL',
-            inputAmount: Number((debt.amount * SOLANA.DEVNET_USDC_TO_SOL).toFixed(6)),
+            inputAmount: txResult.details.amountSOL ?? 0,
             outputUSDC: debt.amount,
-            route: 'Jupiter (Mock)',
+            route: txResult.paymentMethod === 'JUPITER_SWAP'
+              ? 'Jupiter v6 (ExactOut)'
+              : `SOL Equivalent (~${txResult.details.solUsdcRate?.toFixed(0)} USDC/SOL)`,
             slippage: 0.5,
             fee: 0,
           }
           : null,
-      chain: {
-        networkFee: 0.000005,
-        confirmationStatus: 'confirmed',
-        blockTime: Math.floor(Date.now() / 1000),
-      },
-    });
+        chain: {
+          networkFee: SOLANA.NETWORK_FEE,
+          confirmationStatus: confirmed ? 'confirmed' : 'pending',
+          blockTime: Math.floor(Date.now() / 1000),
+        },
+      });
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setPayStatus('idle');
+      payStatusRef.current = 'idle';
 
-    router.replace(
-      `/settle/success?txId=${mockSignature}&groupId=${group.id}&amount=${debt.amount}&from=${currentUser.name}&to=${recipient.name}&groupName=${group.name}&groupEmoji=${group.emoji}&method=${paymentMethod}&recipientWallet=${recipientWallet || ''}&settledAt=${encodeURIComponent(settledAt)}&memo=${encodeURIComponent(memo)}` as any,
-    );
-  }, [group, currentUser, recipient, debt, walletAddress, recipientWallet, paymentMethod, addSettlement, addTransaction, router]);
+      router.replace(
+        `/settle/success?txId=${signature}&groupId=${group.id}&amount=${debt.amount}&from=${encodeURIComponent(currentUser.name)}&to=${encodeURIComponent(recipient.name)}&groupName=${encodeURIComponent(group.name)}&groupEmoji=${encodeURIComponent(group.emoji)}&method=${txResult.paymentMethod}&recipientWallet=${encodeURIComponent(recipientWallet)}&settledAt=${encodeURIComponent(settledAt)}&memo=${encodeURIComponent(memo)}` as any,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Payment failed. Please try again.';
+      setErrorMsg(msg);
+      setPayStatus('error');
+      payStatusRef.current = 'error';
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      resetSlider();
+    }
+  }, [
+    group, currentUser, recipient, debt, walletAddress, recipientWallet,
+    addSettlement, addTransaction, router, resetSlider,
+  ]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => payStatusRef.current === 'idle',
+        onMoveShouldSetPanResponder: () => payStatusRef.current === 'idle',
         onPanResponderGrant: () => {
-          setIsSliding(true);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         },
         onPanResponderMove: (_, gestureState) => {
@@ -159,25 +225,20 @@ export default function Settlement() {
           slideAnim.setValue(value);
         },
         onPanResponderRelease: (_, gestureState) => {
-          setIsSliding(false);
           if (gestureState.dx >= SLIDE_THRESHOLD) {
             Animated.timing(slideAnim, {
               toValue: SLIDE_THRESHOLD,
               duration: 100,
               useNativeDriver: true,
             }).start(() => {
-              handlePaymentComplete();
+              void handlePaymentComplete();
             });
           } else {
-            Animated.spring(slideAnim, {
-              toValue: 0,
-              friction: 5,
-              useNativeDriver: true,
-            }).start();
+            resetSlider();
           }
         },
       }),
-    [slideAnim, handlePaymentComplete],
+    [slideAnim, handlePaymentComplete, resetSlider],
   );
 
   if (!group || !debt || !currentUser || !recipient) {
@@ -206,7 +267,14 @@ export default function Settlement() {
     );
   }
 
-  const memoText = buildMemo(group.name, currentUser.name, recipient.name, debt.amount);
+  const canPay = !!recipientWallet && !!walletAddress;
+
+  // Determine what the payment method card shows based on current balances
+  const detectedMethod: AutoPayMethod = hasEnoughUsdc
+    ? 'USDC'
+    : SOLANA.CLUSTER === 'devnet'
+      ? 'SOL_EQUIVALENT'
+      : 'JUPITER_SWAP';
 
   return (
     <LinearGradient
@@ -220,7 +288,7 @@ export default function Settlement() {
           styles.scrollContent,
           { paddingTop: insets.top + SPACING.lg },
         ]}
-        showsVerticalScrollIndicator={true}
+        showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -239,9 +307,7 @@ export default function Settlement() {
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrap}>
               <Avatar name={currentUser.name} size={60} color="#C4B5FD" />
-              <Text style={styles.avatarLabel}>
-                {currentUser.isCurrentUser ? currentUser.name : currentUser.name}
-              </Text>
+              <Text style={styles.avatarLabel}>{currentUser.name}</Text>
             </View>
             <View style={styles.arrowWrap}>
               <Ionicons name="arrow-forward" size={22} color="#9CA3AF" />
@@ -260,94 +326,71 @@ export default function Settlement() {
           </Text>
         </View>
 
-        {/* Payment Method */}
+        {/* Payment Method Detection Card */}
         <View style={styles.paymentMethodHeader}>
           <Text style={styles.paymentMethodTitle}>Payment Method</Text>
           <View style={styles.devnetBadge}>
-            <Text style={styles.devnetText}>Devnet</Text>
+            <Text style={styles.devnetText}>
+              {SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
+            </Text>
           </View>
         </View>
 
-        {/* Direct USDC Option */}
-        <TouchableOpacity
-          style={[
-            styles.paymentOption,
-            paymentMethod === 'direct_usdc' && styles.paymentOptionSelected,
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setPaymentMethod('direct_usdc');
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.paymentOptionLeft}>
-            <View style={styles.paymentIconCircle}>
+        {detectedMethod === 'USDC' ? (
+          <View style={[styles.methodCard, styles.methodCardGreen]}>
+            <View style={styles.methodIconCircle}>
               <Ionicons name="checkmark-circle" size={28} color="#10B981" />
             </View>
-            <View>
-              <Text style={styles.paymentOptionTitle}>Direct USDC Transfer</Text>
-              <Text style={styles.paymentOptionBalance}>
-                Balance: {usdcBalance.toFixed(2)} USDC
+            <View style={styles.methodInfo}>
+              <Text style={styles.methodTitle}>Direct USDC Transfer</Text>
+              <Text style={styles.methodSub}>
+                Balance: {usdcBalance.toFixed(2)} USDC · paying {formatCurrency(debt.amount)}
               </Text>
             </View>
           </View>
-          <View
-            style={[
-              styles.radioOuter,
-              paymentMethod === 'direct_usdc' && styles.radioOuterSelected,
-            ]}
-          >
-            {paymentMethod === 'direct_usdc' && (
-              <View style={styles.radioInner} />
-            )}
-          </View>
-        </TouchableOpacity>
-
-        {/* AutoPay Option */}
-        <TouchableOpacity
-          style={[
-            styles.paymentOption,
-            paymentMethod === 'autopay' && styles.paymentOptionSelected,
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setPaymentMethod('autopay');
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.paymentOptionLeft}>
-            <View style={styles.paymentIconCircleGray}>
-              <Ionicons name="swap-horizontal" size={24} color="#6B7280" />
+        ) : detectedMethod === 'SOL_EQUIVALENT' ? (
+          <View style={[styles.methodCard, styles.methodCardPurple]}>
+            <View style={styles.methodIconCircleAlt}>
+              <Ionicons name="swap-horizontal" size={24} color="#7C3AED" />
             </View>
-            <View>
-              <Text style={styles.paymentOptionTitle}>AutoPay: Swap SOL →{'\n'}USDC</Text>
-              <Text style={styles.paymentOptionBalance}>
-                Balance: {solBalance.toFixed(2)} SOL
+            <View style={styles.methodInfo}>
+              <Text style={styles.methodTitle}>AutoPay: SOL Equivalent</Text>
+              <Text style={styles.methodSub}>
+                Sending ≈{estimatedSOL.toFixed(6)} SOL (≈{debt.amount.toFixed(2)} USDC)
+              </Text>
+              <Text style={styles.methodNote}>
+                Devnet demo · rate ≈ {solUsdcRate.toFixed(0)} USDC/SOL
               </Text>
             </View>
           </View>
-          <View
-            style={[
-              styles.radioOuter,
-              paymentMethod === 'autopay' && styles.radioOuterSelected,
-            ]}
-          >
-            {paymentMethod === 'autopay' && <View style={styles.radioInner} />}
+        ) : (
+          <View style={[styles.methodCard, styles.methodCardPurple]}>
+            <View style={styles.methodIconCircleAlt}>
+              <Ionicons name="swap-horizontal" size={24} color="#7C3AED" />
+            </View>
+            <View style={styles.methodInfo}>
+              <Text style={styles.methodTitle}>AutoPay: SOL → USDC</Text>
+              <Text style={styles.methodSub}>
+                Swapping SOL via Jupiter · paying {formatCurrency(debt.amount)}
+              </Text>
+              <Text style={styles.methodNote}>
+                Best route selected automatically
+              </Text>
+            </View>
           </View>
-        </TouchableOpacity>
+        )}
 
         {/* Transaction Details */}
         <View style={styles.txDetailsCard}>
           <View style={styles.txDetailsHeader}>
-            <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+            <Ionicons name="receipt-outline" size={20} color="#7C3AED" />
             <Text style={styles.txDetailsTitle}>Transaction Details</Text>
           </View>
 
           <View style={styles.txDetailRow}>
             <Text style={styles.txDetailLabel}>Memo</Text>
             <Text style={styles.txDetailValue} numberOfLines={2}>
-              SplitSOL | {group.name}{'\n'}
-              {currentUser.name} → {recipient.name} | {debt.amount.toFixed(2)} USDC
+              {buildMemo(group.name, currentUser.name, recipient.name, debt.amount)}
             </Text>
           </View>
 
@@ -359,12 +402,37 @@ export default function Settlement() {
           <View style={styles.txDetailRow}>
             <Text style={styles.txDetailLabel}>Recipient wallet</Text>
             <Text style={styles.txDetailValue}>
-              {recipientWallet
-                ? truncateAddress(recipientWallet, 4)
-                : 'Not set'}
+              {recipientWallet ? truncateAddress(recipientWallet, 4) : 'Not linked'}
             </Text>
           </View>
+
+          {!recipientWallet && (
+            <View style={styles.noWalletBanner}>
+              <Ionicons name="alert-circle-outline" size={15} color="#F59E0B" />
+              <Text style={styles.noWalletText}>
+                {recipient.name} has no wallet address. Payment cannot proceed.
+              </Text>
+            </View>
+          )}
         </View>
+
+        {/* Error card */}
+        {payStatus === 'error' && (
+          <View style={styles.errorCard}>
+            <Ionicons name="alert-circle" size={20} color="#EF4444" />
+            <Text style={styles.errorCardText} numberOfLines={3}>{errorMsg}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setPayStatus('idle');
+                payStatusRef.current = 'idle';
+                setErrorMsg('');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.errorDismiss}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Spacer for slide button */}
         <View style={{ height: 120 }} />
@@ -372,40 +440,48 @@ export default function Settlement() {
 
       {/* Slide to Pay */}
       <View style={[styles.slideContainer, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={styles.sliderTrack}>
-          <Animated.View
-            style={[
-              styles.sliderThumb,
-              { transform: [{ translateX: slideAnim }] },
-            ]}
-            {...panResponder.panHandlers}
-          >
-            <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
-          </Animated.View>
-          <Text style={styles.slideText}>Slide to Pay</Text>
-          <Animated.View
-            style={[
-              styles.chevronGroup,
-              {
-                opacity: chevronAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.3, 0.8],
-                }),
-              },
-            ]}
-          >
-            <Text style={styles.chevrons}>›››</Text>
-          </Animated.View>
-        </View>
+        {payStatus === 'building' || payStatus === 'signing' ? (
+          <View style={styles.loadingTrack}>
+            <ActivityIndicator size="small" color="#7C3AED" />
+            <Text style={styles.loadingTrackText}>
+              {payStatus === 'building' ? 'Preparing transaction…' : 'Waiting for Solflare…'}
+            </Text>
+          </View>
+        ) : !canPay ? (
+          <View style={[styles.sliderTrack, styles.sliderTrackDisabled]}>
+            <Text style={styles.slideTextDisabled}>Wallet not linked</Text>
+          </View>
+        ) : (
+          <View style={styles.sliderTrack}>
+            <Animated.View
+              style={[styles.sliderThumb, { transform: [{ translateX: slideAnim }] }]}
+              {...panResponder.panHandlers}
+            >
+              <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
+            </Animated.View>
+            <Text style={styles.slideText}>Slide to Pay</Text>
+            <Animated.View
+              style={[
+                styles.chevronGroup,
+                {
+                  opacity: chevronAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.3, 0.8],
+                  }),
+                },
+              ]}
+            >
+              <Text style={styles.chevrons}>›››</Text>
+            </Animated.View>
+          </View>
+        )}
       </View>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SPACING.xl,
     paddingBottom: 40,
@@ -416,22 +492,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING.xxxl,
   },
-  errorEmoji: {
-    fontSize: 48,
-    marginBottom: SPACING.lg,
-  },
-  errorTitle: {
-    color: '#111827',
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  errorSub: {
-    color: '#6B7280',
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-  },
+  errorEmoji: { fontSize: 48, marginBottom: SPACING.lg },
+  errorTitle: { color: '#111827', fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  errorSub: { color: '#6B7280', fontSize: 15, textAlign: 'center', marginTop: SPACING.sm },
   goBackBtn: {
     backgroundColor: '#7C3AED',
     paddingHorizontal: 24,
@@ -439,11 +502,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: SPACING.xxl,
   },
-  goBackBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  goBackBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   // Header
   header: {
@@ -461,11 +520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-  },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#111827' },
 
   // Summary card
   summaryCard: {
@@ -478,151 +533,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.xxl,
   },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  avatarWrap: {
-    alignItems: 'center',
-    width: 85,
-  },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  avatarWrap: { alignItems: 'center', width: 85 },
   avatarLabel: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 8,
-    textAlign: 'center',
+    color: '#111827', fontSize: 15, fontWeight: '700',
+    marginTop: 8, textAlign: 'center',
   },
-  arrowWrap: {
-    paddingHorizontal: 20,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    marginBottom: 8,
-  },
-  amountValue: {
-    fontSize: 42,
-    fontWeight: '900',
-    color: '#111827',
-    letterSpacing: -1,
-  },
-  amountCurrency: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#9CA3AF',
-  },
-  fromGroup: {
-    color: '#6B7280',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  arrowWrap: { paddingHorizontal: 20 },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
+  amountValue: { fontSize: 42, fontWeight: '900', color: '#111827', letterSpacing: -1 },
+  amountCurrency: { fontSize: 20, fontWeight: '800', color: '#9CA3AF' },
+  fromGroup: { color: '#6B7280', fontSize: 15, fontWeight: '600' },
 
-  // Payment Method
+  // Payment method header
   paymentMethodHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
-  paymentMethodTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
+  paymentMethodTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   devnetBadge: {
     backgroundColor: '#FFFBEB',
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 14,
   },
-  devnetText: {
-    color: '#F59E0B',
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  devnetText: { color: '#F59E0B', fontSize: 13, fontWeight: '800' },
 
-  // Payment options
-  paymentOption: {
+  // Auto-detected method card
+  methodCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
     paddingVertical: 16,
     paddingHorizontal: 18,
-    marginBottom: 12,
-  },
-  paymentOptionSelected: {
-    borderColor: '#7C3AED',
-    borderWidth: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
-  },
-  paymentOptionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: SPACING.xxl,
     gap: 14,
-    flex: 1,
   },
-  paymentIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  methodCardGreen: {
+    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+    borderColor: '#10B981',
   },
-  paymentIconCircleGray: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(107, 114, 128, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  paymentOptionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  paymentOptionBalance: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginTop: 3,
-  },
-  radioOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOuterSelected: {
+  methodCardPurple: {
+    backgroundColor: 'rgba(124, 58, 237, 0.06)',
     borderColor: '#7C3AED',
   },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#7C3AED',
+  methodIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  methodIconCircleAlt: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodInfo: { flex: 1 },
+  methodTitle: { fontSize: 15, fontWeight: '800', color: '#111827', marginBottom: 3 },
+  methodSub: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  methodNote: { fontSize: 12, fontWeight: '500', color: '#9CA3AF', marginTop: 2 },
 
-  // Transaction Details
+  // Transaction details
   txDetailsCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.65)',
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.8)',
     padding: 20,
-    marginTop: 8,
     marginBottom: 16,
   },
   txDetailsHeader: {
@@ -631,31 +617,43 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 18,
   },
-  txDetailsTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-  },
+  txDetailsTitle: { fontSize: 17, fontWeight: '800', color: '#111827' },
   txDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 14,
   },
-  txDetailLabel: {
-    color: '#6B7280',
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
+  txDetailLabel: { color: '#6B7280', fontSize: 14, fontWeight: '600', flex: 1 },
   txDetailValue: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'right',
-    flex: 1.5,
+    color: '#111827', fontSize: 14, fontWeight: '700',
+    textAlign: 'right', flex: 1.5,
   },
+  noWalletBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+  },
+  noWalletText: { color: '#92400E', fontSize: 13, fontWeight: '600', flex: 1 },
 
+  // Error card
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+    padding: 14,
+    marginBottom: 8,
+  },
+  errorCardText: { flex: 1, color: '#EF4444', fontSize: 13, fontWeight: '600' },
+  errorDismiss: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
 
   // Slide to pay
   slideContainer: {
@@ -676,6 +674,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4,
     overflow: 'hidden',
+  },
+  sliderTrackDisabled: {
+    backgroundColor: 'rgba(209, 213, 219, 0.6)',
+    justifyContent: 'center',
   },
   sliderThumb: {
     width: THUMB_SIZE,
@@ -699,13 +701,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginLeft: -THUMB_SIZE / 2,
   },
-  chevronGroup: {
-    marginRight: 16,
-  },
-  chevrons: {
-    color: '#7C3AED',
-    fontSize: 22,
+  slideTextDisabled: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#9CA3AF',
+    fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 2,
   },
+  chevronGroup: { marginRight: 16 },
+  chevrons: { color: '#7C3AED', fontSize: 22, fontWeight: '700', letterSpacing: 2 },
+  loadingTrack: {
+    width: '100%',
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(237, 225, 255, 0.85)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingTrackText: { color: '#7C3AED', fontSize: 16, fontWeight: '700' },
 });
