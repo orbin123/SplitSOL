@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -111,12 +112,12 @@ export default function CreateGroup() {
 
   const handleScanMember = (payload: SplitSolQrPayload) => {
     if (payload.type !== 'member') {
-      Alert.alert('Invalid QR Code', 'Please scan a valid SplitSOL member code.');
+      showAlert('Invalid QR Code', 'Please scan a valid SplitSOL member code.');
       return false;
     }
 
     if (payload.wallet === user.walletAddress) {
-      Alert.alert("Can't add yourself", 'You are already included in the group.');
+      showAlert("Can't add yourself", 'You are already included in the group.');
       return false;
     }
 
@@ -136,7 +137,7 @@ export default function CreateGroup() {
       current.includes(memberId) ? current : [...current, memberId],
     );
     setScannerVisible(false);
-    Alert.alert(
+    showAlert(
       existingMember ? 'Member selected' : 'Member added',
       `${payload.name} will be included in this group.`,
     );

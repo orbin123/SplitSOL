@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -23,7 +24,7 @@ let QRCode: any = null;
 try {
   const mod = require('react-native-qrcode-svg');
   QRCode = mod.default || mod;
-} catch {}
+} catch { }
 
 export default function InviteScreen() {
   const insets = useSafeAreaInsets();
@@ -39,7 +40,7 @@ export default function InviteScreen() {
 
     await Clipboard.setStringAsync(user.walletAddress);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', 'Wallet address copied to clipboard.');
+    showAlert('Copied', 'Wallet address copied to clipboard.');
   };
 
   const shareQr = async () => {

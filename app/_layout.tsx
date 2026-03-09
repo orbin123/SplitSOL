@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { COLORS } from '@/utils/constants';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
 import { AppSplash } from '@/components/layout/AppSplash';
+import { CustomAlertModal } from '@/components/ui/CustomAlertModal';
 
 global.Buffer = global.Buffer || Buffer;
 
@@ -36,6 +37,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="dark" />
       <ScreenWrapper variant="main" style={{ flex: 1 }}>
+        <CustomAlertModal />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: 'transparent' },

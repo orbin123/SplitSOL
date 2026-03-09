@@ -20,6 +20,8 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency, truncateAddress } from '@/utils/formatters';
 import { getExplorerUrl } from '@/utils/solana';
 import { resolveTransactionDetails } from '@/utils/transactions';
@@ -84,8 +86,8 @@ export default function TransactionDetailScreen() {
   const copySignature = async () => {
     if (!transaction.signature) return;
     await Clipboard.setStringAsync(transaction.signature);
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', 'Transaction signature copied to clipboard.');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showAlert('Copied', 'Transaction signature copied to clipboard.');
   };
 
   const shareReceipt = async () => {

@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { showAlert } from '@/store/useAlertStore';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -51,7 +51,7 @@ export default function GroupInvite() {
 
   const handleJoin = () => {
     if (!user.name) {
-      Alert.alert('No name set', 'Please set your name in Profile before joining a group.');
+      showAlert('No name set', 'Please set your name in Profile before joining a group.');
       return;
     }
     addGroupMember(group.id, user.name, user.walletAddress ?? undefined);

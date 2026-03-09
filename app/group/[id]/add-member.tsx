@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { QRScanner } from '@/components/ui/QRScanner';
 import { SplitSolQrPayload } from '@/utils/memberQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { showAlert } from '@/store/useAlertStore';
 
 export default function AddMember() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -92,17 +93,17 @@ export default function AddMember() {
 
   const handleScanMember = (payload: SplitSolQrPayload) => {
     if (payload.type !== 'member') {
-      Alert.alert('Invalid QR Code', 'Please scan a valid SplitSOL member code.');
+      showAlert('Invalid QR Code', 'Please scan a valid SplitSOL member code.');
       return false;
     }
 
     if (payload.wallet === user.walletAddress) {
-      Alert.alert("Can't add yourself", 'You are already in this group.');
+      showAlert("Can't add yourself", 'You are already in this group.');
       return false;
     }
 
     if (existingWallets.has(payload.wallet)) {
-      Alert.alert('Already in group', `${payload.name} is already a member.`);
+      showAlert('Already in group', `${payload.name} is already a member.`);
       return false;
     }
 
@@ -119,7 +120,7 @@ export default function AddMember() {
 
     addGroupMember(id, payload.name, payload.wallet, memberId);
     setScannerVisible(false);
-    Alert.alert(
+    showAlert(
       existingMember ? 'Member added' : 'Member added',
       `${payload.name} was added to the group.`,
       [{ text: 'OK', onPress: () => router.back() }],

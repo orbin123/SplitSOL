@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
+import { Card } from '@/components/ui/Card';
 import { QRScanner } from '@/components/ui/QRScanner';
 import { SplitSolQrPayload } from '@/utils/memberQr';
 
@@ -23,9 +24,9 @@ export default function ScanMemberScreen() {
     }
 
     if (payload.wallet === user.walletAddress) {
-      Alert.alert(
-        'This is your QR code',
-        'You cannot add yourself as a member.',
+      showAlert(
+        'Invalid Code',
+        'This is your QR code. You cannot add yourself as a member.',
         [{ text: 'OK', onPress: () => setIsHandling(false) }],
       );
       return false;
@@ -42,7 +43,7 @@ export default function ScanMemberScreen() {
         isFavorite: false,
       });
 
-    Alert.alert(
+    showAlert(
       existingMember ? 'Already in members' : 'Member added',
       existingMember
         ? `${payload.name} is already in your member list.`

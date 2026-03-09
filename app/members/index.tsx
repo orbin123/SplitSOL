@@ -15,6 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
+import { truncateAddress } from '@/utils/formatters';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { Member } from '@/types';
@@ -65,7 +67,7 @@ export default function MembersScreen() {
   const allMembers = filteredMembers;
 
   const confirmRemove = (id: string, name: string) => {
-    Alert.alert('Remove Member', `Remove ${name} from your members?`, [
+    showAlert('Remove Member', `Remove ${name} from your members?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',

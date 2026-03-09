@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
+import { View, Text, StyleSheet, ViewStyle, Image } from 'react-native';
+import { COLORS, FONT, SPACING } from '@/utils/constants';
 
 interface SplitSolLogoProps {
   size?: number;
@@ -9,40 +9,17 @@ interface SplitSolLogoProps {
 }
 
 export const SplitSolLogo: React.FC<SplitSolLogoProps> = ({
-  size = 88,
+  size = 100,
   showWordmark = false,
   style,
 }) => {
-  const coinSize = Math.max(24, Math.round(size * 0.52));
-
   return (
     <View style={[styles.wrap, style]}>
-      <View style={[styles.mark, { width: size, height: size, borderRadius: size / 3 }]}>
-        <View
-          style={[
-            styles.coinBack,
-            {
-              width: coinSize,
-              height: coinSize,
-              borderRadius: coinSize / 2,
-              left: Math.round(size * 0.18),
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.coinFront,
-            {
-              width: coinSize,
-              height: coinSize,
-              borderRadius: coinSize / 2,
-              right: Math.round(size * 0.16),
-            },
-          ]}
-        >
-          <Text style={[styles.coinText, { fontSize: Math.round(size * 0.34) }]}>S</Text>
-        </View>
-      </View>
+      <Image
+        source={require('@/assets/icon.png')}
+        style={{ width: size, height: size, borderRadius: size / 3 }}
+        resizeMode="cover"
+      />
       {showWordmark && <Text style={styles.wordmark}>SplitSOL</Text>}
     </View>
   );
@@ -52,28 +29,6 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
   },
-  mark: {
-    backgroundColor: COLORS.bg.dark,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  coinBack: {
-    position: 'absolute',
-    backgroundColor: COLORS.bg.accentSoft,
-    opacity: 0.9,
-  },
-  coinFront: {
-    position: 'absolute',
-    backgroundColor: COLORS.bg.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-  },
-  coinText: {
-    color: COLORS.text.white,
-    fontWeight: FONT.weight.extrabold,
-  },
   wordmark: {
     marginTop: SPACING.lg,
     color: COLORS.text.primary,
@@ -82,3 +37,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 });
+

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency, timeAgo, truncateAddress } from '@/utils/formatters';
+import { showAlert } from '@/store/useAlertStore';
 import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
 
 export default function MemberDetailScreen() {
@@ -101,11 +102,11 @@ export default function MemberDetailScreen() {
   const copyAddress = async () => {
     await Clipboard.setStringAsync(member.walletAddress);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', 'Wallet address copied to clipboard.');
+    showAlert('Copied', 'Wallet address copied to clipboard.');
   };
 
   const handleRemove = () => {
-    Alert.alert('Remove Member', `Remove ${member.name} from your members?`, [
+    showAlert('Remove Member', `Remove ${member.name} from your members?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -124,127 +125,127 @@ export default function MemberDetailScreen() {
         <Stack.Screen options={{ title: member.name }} />
       )}
       <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + SPACING.lg + 56, paddingBottom: SPACING.xxxl },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <Card style={styles.profileCard}>
-        <Avatar name={member.name} size={64} />
-        <Text style={styles.name}>{member.name}</Text>
-        {member.walletAddress ? (
-          <View style={styles.addressRow}>
-            <Text style={styles.addressText}>
-              {truncateAddress(member.walletAddress, 8)}
-            </Text>
-            <TouchableOpacity
-              onPress={() => void copyAddress()}
-              hitSlop={12}
-              style={styles.copyIcon}
-            >
-              <Ionicons name="copy-outline" size={18} color={COLORS.text.secondary} />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        <Badge
-          label={member.walletAddress ? 'Connected' : 'No Wallet'}
-          variant={member.walletAddress ? 'success' : 'neutral'}
-          size="sm"
-        />
-        <TouchableOpacity
-          style={styles.favoriteBtn}
-          activeOpacity={0.75}
-          onPress={() => toggleFavorite(member.id)}
-        >
-          <Ionicons
-            name={member.isFavorite ? 'star' : 'star-outline'}
-            size={24}
-            color={member.isFavorite ? COLORS.bg.warning : COLORS.text.tertiary}
-          />
-        </TouchableOpacity>
-      </Card>
-
-      <Text style={styles.sectionTitle}>Shared Groups</Text>
-      {sharedGroups.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No shared groups yet</Text>
-        </Card>
-      ) : (
-        sharedGroups.map(({ group, amount }) => (
-          <Card key={group.id} style={styles.groupCard}>
-            <View style={styles.groupRow}>
-              <Text style={styles.groupEmoji}>{group.emoji}</Text>
-              <Text style={styles.groupName}>{group.name}</Text>
-              <Text
-                style={[
-                  styles.balanceAmount,
-                  amount > 0 ? styles.balanceRed : styles.balanceGreen,
-                ]}
-              >
-                {amount > 0
-                  ? `You owe ${formatCurrency(amount)}`
-                  : amount < 0
-                    ? `They owe you ${formatCurrency(Math.abs(amount))}`
-                    : 'Settled'}
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + SPACING.lg + 56, paddingBottom: SPACING.xxxl },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Card style={styles.profileCard}>
+          <Avatar name={member.name} size={64} />
+          <Text style={styles.name}>{member.name}</Text>
+          {member.walletAddress ? (
+            <View style={styles.addressRow}>
+              <Text style={styles.addressText}>
+                {truncateAddress(member.walletAddress, 8)}
               </Text>
+              <TouchableOpacity
+                onPress={() => void copyAddress()}
+                hitSlop={12}
+                style={styles.copyIcon}
+              >
+                <Ionicons name="copy-outline" size={18} color={COLORS.text.secondary} />
+              </TouchableOpacity>
             </View>
-          </Card>
-        ))
-      )}
-
-      <Text style={styles.sectionTitle}>History</Text>
-      {relatedTransactions.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <EmptyState
-            emoji="🧾"
-            title="No transactions yet"
-            subtitle="Payments and settlements with this member will show up here."
+          ) : null}
+          <Badge
+            label={member.walletAddress ? 'Connected' : 'No Wallet'}
+            variant={member.walletAddress ? 'success' : 'neutral'}
+            size="sm"
           />
+          <TouchableOpacity
+            style={styles.favoriteBtn}
+            activeOpacity={0.75}
+            onPress={() => toggleFavorite(member.id)}
+          >
+            <Ionicons
+              name={member.isFavorite ? 'star' : 'star-outline'}
+              size={24}
+              color={member.isFavorite ? COLORS.bg.warning : COLORS.text.tertiary}
+            />
+          </TouchableOpacity>
         </Card>
-      ) : (
-        relatedTransactions.map((tx) => {
-          const groupName =
-            groups.find((group) => group.id === tx.groupId)?.name ?? 'Unknown group';
-          const youPaid = tx.payerWallet === user.walletAddress;
 
-          return (
-            <Card key={tx.id} style={styles.txCard}>
-              <View style={styles.txRow}>
-                <View style={styles.txCopy}>
-                  <Text style={styles.txDate}>
-                    {new Date(tx.timestamp).toLocaleDateString()}
-                  </Text>
-                  <Text style={styles.txDirection}>
-                    {youPaid ? 'You paid' : `${member.name} paid`} {formatCurrency(tx.amountUSDC)}
-                  </Text>
-                  <Text style={styles.txMeta}>{groupName}</Text>
-                </View>
-                <Badge
-                  label={tx.status}
-                  variant={
-                    tx.status === 'confirmed'
-                      ? 'success'
-                      : tx.status === 'failed'
-                        ? 'danger'
-                        : 'warning'
-                  }
-                  size="sm"
-                />
+        <Text style={styles.sectionTitle}>Shared Groups</Text>
+        {sharedGroups.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No shared groups yet</Text>
+          </Card>
+        ) : (
+          sharedGroups.map(({ group, amount }) => (
+            <Card key={group.id} style={styles.groupCard}>
+              <View style={styles.groupRow}>
+                <Text style={styles.groupEmoji}>{group.emoji}</Text>
+                <Text style={styles.groupName}>{group.name}</Text>
+                <Text
+                  style={[
+                    styles.balanceAmount,
+                    amount > 0 ? styles.balanceRed : styles.balanceGreen,
+                  ]}
+                >
+                  {amount > 0
+                    ? `You owe ${formatCurrency(amount)}`
+                    : amount < 0
+                      ? `They owe you ${formatCurrency(Math.abs(amount))}`
+                      : 'Settled'}
+                </Text>
               </View>
             </Card>
-          );
-        })
-      )}
+          ))
+        )}
 
-      <Button
-        title="Remove Member"
-        onPress={handleRemove}
-        variant="danger"
-        style={styles.removeButton}
-      />
-    </ScrollView>
+        <Text style={styles.sectionTitle}>History</Text>
+        {relatedTransactions.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <EmptyState
+              emoji="🧾"
+              title="No transactions yet"
+              subtitle="Payments and settlements with this member will show up here."
+            />
+          </Card>
+        ) : (
+          relatedTransactions.map((tx) => {
+            const groupName =
+              groups.find((group) => group.id === tx.groupId)?.name ?? 'Unknown group';
+            const youPaid = tx.payerWallet === user.walletAddress;
+
+            return (
+              <Card key={tx.id} style={styles.txCard}>
+                <View style={styles.txRow}>
+                  <View style={styles.txCopy}>
+                    <Text style={styles.txDate}>
+                      {new Date(tx.timestamp).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.txDirection}>
+                      {youPaid ? 'You paid' : `${member.name} paid`} {formatCurrency(tx.amountUSDC)}
+                    </Text>
+                    <Text style={styles.txMeta}>{groupName}</Text>
+                  </View>
+                  <Badge
+                    label={tx.status}
+                    variant={
+                      tx.status === 'confirmed'
+                        ? 'success'
+                        : tx.status === 'failed'
+                          ? 'danger'
+                          : 'warning'
+                    }
+                    size="sm"
+                  />
+                </View>
+              </Card>
+            );
+          })
+        )}
+
+        <Button
+          title="Remove Member"
+          onPress={handleRemove}
+          variant="danger"
+          style={styles.removeButton}
+        />
+      </ScrollView>
     </>
   );
 }

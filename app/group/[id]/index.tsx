@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { showAlert } from '@/store/useAlertStore';
 import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
@@ -247,7 +248,7 @@ export default function GroupDetail() {
                     message: `Reminder: ${debt.from.name} owes ${formatCurrency(debt.amount)} to ${debt.to.name} in ${group.name}.`,
                   });
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert('Reminder Sent', 'A local reminder has been added to notifications.');
+                  showAlert('Reminder Sent', 'A local reminder has been added to notifications.');
                 }}
               />
             )}

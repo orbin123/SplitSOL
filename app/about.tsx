@@ -55,7 +55,7 @@ export default function AboutScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Card style={styles.appCard}>
-        <SplitSolLogo size={64} />
+        <SplitSolLogo size={100} />
         <Text style={styles.appName}>{APP.NAME}</Text>
         <Text style={styles.tagline}>Split expenses. Settle on-chain.</Text>
         <Text style={styles.version}>v{APP.VERSION}</Text>
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     fontSize: 24,
     fontWeight: FONT.weight.bold,
-    marginTop: SPACING.lg,
+
   },
   tagline: {
     color: COLORS.text.secondary,
