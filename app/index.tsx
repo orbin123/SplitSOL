@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'transparent',
     gap: SPACING.md,
   },
   text: {

@@ -1,13 +1,15 @@
 import React from 'react';
 import {
-  TouchableOpacity,
+  Pressable,
   Text,
   StyleSheet,
   ActivityIndicator,
   ViewStyle,
+  View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS, SHADOWS } from '@/utils/constants';
 
 interface ButtonProps {
   title: string;
@@ -32,19 +34,8 @@ export const Button: React.FC<ButtonProps> = ({
   const isDisabled = disabled || loading;
   const usesLightText = variant === 'primary' || variant === 'danger' || variant === 'dark';
 
-  return (
-    <TouchableOpacity
-      style={[
-        styles.base,
-        variantStyles[variant],
-        sizeStyles[size],
-        isDisabled && styles.disabled,
-        style,
-      ]}
-      onPress={handlePress}
-      disabled={isDisabled}
-      activeOpacity={0.8}
-    >
+  const content = (
+    <>
       {loading ? (
         <ActivityIndicator
           color={usesLightText ? COLORS.text.white : COLORS.text.primary}
@@ -65,7 +56,57 @@ export const Button: React.FC<ButtonProps> = ({
           </Text>
         </>
       )}
-    </TouchableOpacity>
+    </>
+  );
+
+  if (variant === 'primary') {
+    return (
+      <Pressable
+        onPress={handlePress}
+        disabled={isDisabled}
+        style={({ pressed }) => [
+          { borderRadius: RADIUS.full, overflow: 'hidden' },
+          isDisabled && styles.disabled,
+          pressed && styles.pressed,
+          style,
+        ]}
+      >
+        <LinearGradient
+          colors={[COLORS.bg.accent, COLORS.bg.accentLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[
+            {
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: RADIUS.full,
+              width: '100%',
+            },
+            sizeStyles[size],
+          ]}
+        >
+          {content}
+        </LinearGradient>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.base,
+        variantStyles[variant],
+        sizeStyles[size],
+        isDisabled && styles.disabled,
+        pressed && styles.pressed,
+        style,
+      ]}
+      onPress={handlePress}
+      disabled={isDisabled}
+    >
+      {content}
+    </Pressable>
   );
 };
 
@@ -74,33 +115,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.full,
+  },
+  primaryWrapper: {
+    overflow: 'hidden',
+    borderRadius: RADIUS.full,
+  },
+  gradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    borderRadius: RADIUS.full,
   },
   disabled: { opacity: 0.5 },
-  text: { fontWeight: FONT.weight.semibold },
+  pressed: { opacity: 0.9 },
+  text: { fontWeight: FONT.weight.bold },
 });
 
 const variantStyles = StyleSheet.create({
-  primary: { backgroundColor: COLORS.bg.accent },
+  primary: {},
   secondary: {
-    backgroundColor: COLORS.bg.secondary,
-    borderWidth: 1.5,
-    borderColor: COLORS.border.default,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: COLORS.bg.accent,
   },
-  danger: { backgroundColor: COLORS.bg.danger },
+  danger: {
+    backgroundColor: COLORS.bg.danger,
+    borderRadius: RADIUS.full,
+  },
   ghost: { backgroundColor: 'transparent' },
-  dark: { backgroundColor: COLORS.bg.dark, borderRadius: RADIUS.lg },
+  dark: {
+    backgroundColor: COLORS.bg.dark,
+    borderRadius: RADIUS.full,
+  },
 });
 
 const sizeStyles = StyleSheet.create({
-  sm: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg },
-  md: { paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl },
-  lg: { paddingVertical: SPACING.lg + 2, paddingHorizontal: SPACING.xxl },
+  sm: { paddingVertical: 10, paddingHorizontal: 20 },
+  md: { paddingVertical: 14, paddingHorizontal: 28 },
+  lg: { paddingVertical: 16, paddingHorizontal: 32 },
 });
 
 const textVariantStyles = StyleSheet.create({
   primary: { color: COLORS.text.white },
-  secondary: { color: COLORS.text.primary },
+  secondary: { color: COLORS.bg.accent },
   danger: { color: COLORS.text.white },
   ghost: { color: COLORS.text.accent },
   dark: { color: COLORS.text.white },

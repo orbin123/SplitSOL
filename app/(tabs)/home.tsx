@@ -6,26 +6,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
-import { Avatar } from '@/components/ui/Avatar';
-import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
-import { formatCurrency } from '@/utils/formatters';
 import {
   calculateBalances,
-  getTotalExpenses,
   simplifyDebts,
 } from '@/utils/calculations';
 import {
   COLORS,
-  GRADIENTS,
   SPACING,
-  FONT,
-  RADIUS,
   TAB_BAR_HEIGHT,
+  SHADOWS,
 } from '@/utils/constants';
 import { Group } from '@/store/types';
+import { seedMockData, clearMockData } from '@/utils/seedMockData';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -35,8 +30,8 @@ const getGreeting = () => {
 };
 
 const GROUP_BG_COLORS = [
-  '#FEE2E2', '#FEF3C7', '#D1FAE5', '#DBEAFE',
-  '#EDE9FE', '#FCE7F3', '#FFEDD5', '#CCFBF1',
+  'rgba(254, 226, 226, 0.6)', 'rgba(254, 243, 199, 0.6)', 'rgba(209, 250, 229, 0.6)', 'rgba(219, 234, 254, 0.6)',
+  'rgba(237, 233, 254, 0.6)', 'rgba(252, 231, 243, 0.6)', 'rgba(255, 237, 213, 0.6)', 'rgba(204, 251, 241, 0.6)',
 ];
 
 function getGroupIconBg(str: string): string {
@@ -48,10 +43,10 @@ function getGroupIconBg(str: string): string {
 }
 
 const QUICK_ACTIONS: { key: string; icon: string; label: string }[] = [
-  { key: 'split', icon: 'add-circle-outline', label: 'Add Split' },
-  { key: 'settle', icon: 'swap-horizontal-outline', label: 'Settle' },
-  { key: 'scan', icon: 'scan-outline', label: 'Scan' },
-  { key: 'invite', icon: 'people-outline', label: 'Invite' },
+  { key: 'split', icon: 'add', label: 'Add Split' },
+  { key: 'settle', icon: 'swap-horizontal', label: 'Settle' },
+  { key: 'scan', icon: 'qr-code', label: 'Scan' },
+  { key: 'invite', icon: 'people', label: 'Invite' },
 ];
 
 export default function Home() {
@@ -93,6 +88,7 @@ export default function Home() {
     return {
       owedToYou: Math.round(owedToYou * 100) / 100,
       youOwe: Math.round(youOwe * 100) / 100,
+      total: Math.round((owedToYou - youOwe) * 100) / 100,
     };
   }, [groups]);
 
@@ -109,13 +105,7 @@ export default function Home() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     switch (key) {
       case 'split':
-        if (groups.length === 0) {
-          router.push('/group/create');
-        } else if (groups.length === 1) {
-          router.push(`/group/${groups[0].id}/add-split` as any);
-        } else {
-          router.push('/split' as any);
-        }
+        router.push('/group/create');
         break;
       case 'settle':
         router.push('/settle' as any);
@@ -130,44 +120,43 @@ export default function Home() {
   };
 
   return (
-    <ScrollView
+    <LinearGradient
+      colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
       style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + SPACING.lg },
-      ]}
-      showsVerticalScrollIndicator={false}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.userName}>
-            {user.name || 'Friend'} 👋
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + SPACING.lg },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── 🌱 DEV SEED BANNER — delete when done designing ─────── */}
+        <View style={styles.devBanner}>
+          <Text style={styles.devLabel}>🌱 Design Mode</Text>
           <TouchableOpacity
-            style={styles.bellButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/notifications' as any);
-            }}
+            style={styles.devBtn}
+            onPress={() => seedMockData()}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name="notifications-outline"
-              size={22}
-              color={COLORS.text.primary}
-            />
-            {unreadNotifications > 0 && (
-              <Badge
-                label={unreadNotifications > 9 ? '9+' : String(unreadNotifications)}
-                size="sm"
-                style={styles.badge}
-              />
-            )}
+            <Text style={styles.devBtnText}>Seed Data</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.devBtn, styles.devBtnDanger]}
+            onPress={() => clearMockData()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.devBtnText}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+        {/* ─────────────────────────────────────────────────────────── */}
+        <View style={styles.header}>
+          <Text style={styles.greetingHeader}>
+            {getGreeting()} {user.name || 'Friend'}
+          </Text>
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -175,318 +164,339 @@ export default function Home() {
             }}
             activeOpacity={0.7}
           >
-            <Avatar name={user.name || 'Me'} size={44} />
+            <View style={styles.avatarWrapper}>
+              <Text style={styles.avatarText}>
+                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Overall Balance Card */}
-      <LinearGradient
-        colors={GRADIENTS.purple}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.balanceCard}
-      >
-        <Text style={styles.balanceLabel}>OVERALL BALANCE</Text>
-        <View style={styles.balanceSummaryRow}>
-          <View style={styles.balanceSummaryColumn}>
-            <Text style={styles.balanceSummaryLabel}>You&apos;re owed</Text>
-            <Text
-              style={[styles.balanceSummaryAmount, styles.balanceSummaryPositive]}
-            >
-              {formatCurrency(summaryTotals.owedToYou)}
+        {/* Hero Balance Card */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroCardContent}>
+            <Text style={styles.heroLabel}>Your overall balance</Text>
+            <Text style={styles.heroAmount}>
+              {summaryTotals.total >= 0 ? '' : '-'}
+              {Math.abs(summaryTotals.total).toFixed(2)}{' '}
+              <Text style={styles.heroAmountCurrency}>USDC</Text>
             </Text>
-          </View>
-          <View style={styles.balanceSummaryColumn}>
-            <Text style={styles.balanceSummaryLabel}>You owe</Text>
-            <Text
-              style={[styles.balanceSummaryAmount, styles.balanceSummaryNegative]}
-            >
-              {formatCurrency(summaryTotals.youOwe)}
-            </Text>
+            <View style={styles.heroSubRow}>
+              <View style={styles.heroSubColGreen}>
+                <Text style={styles.heroSubLabel}>You're owed</Text>
+                <Text
+                  style={styles.heroSubGreen}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                >
+                  {summaryTotals.owedToYou.toFixed(2)}{'\n'}USDC
+                </Text>
+              </View>
+              <View style={styles.heroSubColRed}>
+                <Text style={styles.heroSubLabel}>You owe</Text>
+                <Text
+                  style={styles.heroSubRed}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                >
+                  {summaryTotals.youOwe.toFixed(2)} USDC
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
-        <Text style={styles.balanceSub}>
-          Across {groups.length} group{groups.length !== 1 ? 's' : ''}
-        </Text>
 
         {/* Quick Actions */}
-        <View style={styles.quickActions}>
+        <View style={styles.quickActionsContainer}>
           {QUICK_ACTIONS.map((action) => (
             <TouchableOpacity
               key={action.key}
-              style={styles.quickAction}
+              style={styles.quickActionItem}
               onPress={() => handleQuickAction(action.key)}
               activeOpacity={0.7}
             >
-              <View style={styles.quickActionIcon}>
+              <View style={styles.quickActionBtn}>
                 <Ionicons
                   name={action.icon as any}
-                  size={22}
+                  size={26}
                   color={COLORS.bg.accent}
                 />
               </View>
-              <Text style={styles.quickActionLabel}>{action.label}</Text>
+              <Text style={styles.quickActionText}>{action.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-      </LinearGradient>
 
-      {/* Groups Section */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your Groups</Text>
-        {groups.length > 3 && (
-          <TouchableOpacity onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/(tabs)/groups');
-          }}>
-            <Text style={styles.seeAll}>See All</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {groups.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <EmptyState
-            emoji="👥"
-            title="No groups yet"
-            subtitle="Create your first group to start splitting expenses."
-            action={
-              <Button
-                title="Create Group"
-                onPress={() => router.push('/group/create')}
-              />
-            }
-          />
-        </Card>
-      ) : (
-        groups.map((group) => {
-          const bal = getGroupBalance(group);
-          const total = getTotalExpenses(group.expenses);
-          const isSettled = bal === 0 && group.expenses.length > 0;
-
-          return (
-            <Card
-              key={group.id}
-              onPress={() => router.push(`/group/${group.id}`)}
-              style={styles.groupCard}
+        {/* Groups Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Groups</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/(tabs)/groups');
+              }}
             >
-              <View style={styles.groupRow}>
-                <View
-                  style={[
-                    styles.groupIconWrap,
-                    { backgroundColor: getGroupIconBg(group.name) },
-                  ]}
-                >
-                  <Text style={styles.groupEmoji}>{group.emoji}</Text>
-                </View>
-                <View style={styles.groupInfo}>
-                  <Text style={styles.groupName}>{group.name}</Text>
-                  <Text style={styles.groupMeta}>
-                    {group.members.length} member
-                    {group.members.length !== 1 ? 's' : ''} ·{' '}
-                    {formatCurrency(total)}
-                  </Text>
-                </View>
-                <View style={styles.groupBalance}>
-                  {isSettled ? (
-                    <>
-                      <Text style={styles.settledText}>Settled ✓</Text>
-                      <Text style={styles.settledSub}>all clear</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.groupList}>
+            {groups.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <EmptyState
+                  emoji="👥"
+                  title="No groups yet"
+                  subtitle="Create your first group to start splitting expenses."
+                  action={
+                    <Button
+                      title="Create Group"
+                      onPress={() => router.push('/group/create')}
+                    />
+                  }
+                />
+              </Card>
+            ) : (
+              groups.map((group) => {
+                const bal = getGroupBalance(group);
+                const isSettled = bal === 0 && group.expenses.length > 0;
+
+                return (
+                  <TouchableOpacity
+                    key={group.id}
+                    onPress={() => router.push(`/group/${group.id}`)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.groupCard}>
+                      <View
                         style={[
-                          styles.balText,
-                          {
-                            color:
-                              bal >= 0
-                                ? COLORS.text.success
-                                : COLORS.text.danger,
-                          },
+                          styles.groupEmojiBox,
+                          { backgroundColor: getGroupIconBg(group.name) },
                         ]}
                       >
-                        {bal >= 0 ? '+' : '-'}
-                        {formatCurrency(Math.abs(bal))}
-                      </Text>
-                      <Text style={styles.balSub}>
-                        {bal >= 0 ? 'you get back' : 'you owe'}
-                      </Text>
-                    </>
-                  )}
-                </View>
-              </View>
-            </Card>
-          );
-        })
-      )}
+                        <Text style={styles.groupEmoji}>{group.emoji}</Text>
+                      </View>
+                      <View style={styles.groupInfo}>
+                        <Text style={styles.groupName}>{group.name}</Text>
+                        <Text style={styles.groupMeta}>
+                          {group.members.length} member
+                          {group.members.length !== 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.groupBalContainer}>
+                        {isSettled ? (
+                          <>
+                            <Text style={styles.groupBalNeutral}>All Settled</Text>
+                            <Text style={styles.groupBalSub}>0.00</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text
+                              style={[
+                                styles.groupBalAmount,
+                                { color: bal > 0 ? '#10B981' : '#EF4444' },
+                              ]}
+                            >
+                              {bal > 0 ? '+' : ''}
+                              {bal.toFixed(2)}
+                            </Text>
+                            <Text style={styles.groupBalSub}>USDC</Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        </View>
 
-      {/* FAB — Create Group */}
-      {groups.length > 0 && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/group/create');
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={28} color={COLORS.text.white} />
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+        {/* FAB — Create Group */}
+        {groups.length > 0 && (
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/group/create');
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={32} color={COLORS.text.white} />
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
   },
   content: {
     paddingHorizontal: SPACING.xl,
-    paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
-    gap: SPACING.lg,
+    paddingBottom: TAB_BAR_HEIGHT + SPACING.xxxl + 72,
   },
-
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: SPACING.xxxl,
+    paddingHorizontal: 8,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  bellButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.bg.secondary,
-    position: 'relative',
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 2,
-    minWidth: 22,
-    alignItems: 'center',
-  },
-  greeting: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
-  },
-  userName: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.xxl,
-    fontWeight: FONT.weight.bold,
-    marginTop: 2,
-  },
-
-  balanceCard: {
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xxl,
-    gap: SPACING.xs,
-  },
-  balanceLabel: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    letterSpacing: 1,
-  },
-  balanceSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: SPACING.lg,
-    marginTop: SPACING.sm,
-  },
-  balanceSummaryColumn: {
+  greetingHeader: {
+    color: COLORS.bg.dark,
+    fontSize: 26,
+    fontWeight: '800',
     flex: 1,
-    gap: SPACING.xs,
+    letterSpacing: -0.5,
   },
-  balanceSummaryLabel: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-  },
-  balanceSummaryAmount: {
-    fontSize: 28,
-    fontWeight: FONT.weight.extrabold,
-  },
-  balanceSummaryPositive: {
-    color: COLORS.text.success,
-  },
-  balanceSummaryNegative: {
-    color: COLORS.text.danger,
-  },
-  balanceSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginBottom: SPACING.lg,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  quickAction: {
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  quickActionIcon: {
+  avatarWrapper: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: COLORS.bg.secondary,
+    backgroundColor: '#EBE0FF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  quickActionLabel: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.medium,
+  avatarText: {
+    color: '#7C3AED',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
-
+  heroCard: {
+    marginBottom: SPACING.xxxl,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  heroCardContent: {
+    padding: 28,
+  },
+  heroLabel: {
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  heroAmount: {
+    fontSize: 44,
+    fontWeight: '900',
+    letterSpacing: -1,
+    color: '#111827',
+    marginBottom: 24,
+  },
+  heroAmountCurrency: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#9CA3AF',
+  },
+  heroSubRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  heroSubColGreen: {
+    flex: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)', // Subtle green tinted glass
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    padding: 16,
+    borderRadius: 20,
+  },
+  heroSubColRed: {
+    flex: 1,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)', // Subtle red tinted glass
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    padding: 16,
+    borderRadius: 20,
+  },
+  heroSubLabel: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  heroSubGreen: {
+    color: '#10B981',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  heroSubRed: {
+    color: '#EF4444',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 48,
+    paddingHorizontal: 8,
+  },
+  quickActionItem: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  quickActionBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionText: {
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sectionContainer: {
+    flex: 1,
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING.sm,
+    marginBottom: 20,
+    paddingHorizontal: 8,
   },
   sectionTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: '800',
   },
   seeAll: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
+    color: '#7C3AED',
+    fontSize: 16,
+    fontWeight: '700',
   },
-
+  groupList: {
+    flexDirection: 'column',
+    gap: 16,
+  },
   groupCard: {
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
-  },
-  groupRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
-  groupIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
+  groupEmojiBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.md,
+    marginRight: 16,
   },
   groupEmoji: {
     fontSize: 24,
@@ -495,55 +505,85 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   groupName: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
   },
   groupMeta: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: 2,
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 4,
   },
-  groupBalance: {
+  groupBalContainer: {
     alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  balText: {
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.bold,
+  groupBalAmount: {
+    fontSize: 18,
+    fontWeight: '900',
   },
-  balSub: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    marginTop: 1,
+  groupBalNeutral: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#9CA3AF',
   },
-  settledText: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.medium,
+  groupBalSub: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'uppercase',
   },
-  settledSub: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    marginTop: 1,
-  },
-
   emptyCard: {
-    minHeight: 260,
-  },
-
-  fab: {
-    alignSelf: 'flex-end',
-    width: 56,
-    height: 56,
+    minHeight: 200,
     borderRadius: 28,
-    backgroundColor: COLORS.bg.accent,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: TAB_BAR_HEIGHT + SPACING.xxxl,
+    right: SPACING.xl,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.bg.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
     elevation: 8,
-    marginTop: SPACING.sm,
+    zIndex: 20,
+  },
+  devBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    gap: 8,
+  },
+  devLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  devBtn: {
+    backgroundColor: '#10B981',
+    borderRadius: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  devBtnDanger: {
+    backgroundColor: '#EF4444',
+  },
+  devBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

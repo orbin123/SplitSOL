@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING, RADIUS } from '@/utils/constants';
+import { SPACING, RADIUS, SHADOWS } from '@/utils/constants';
 
 interface CardProps {
   children: React.ReactNode;
@@ -30,13 +30,11 @@ export const Card: React.FC<CardProps> = ({ children, onPress, style }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 20,
     padding: SPACING.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    ...SHADOWS.card,
   },
 });

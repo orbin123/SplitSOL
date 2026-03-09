@@ -5,19 +5,24 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
 } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { SplitSolLogo } from '@/components/branding/SplitSolLogo';
-import { Button } from '@/components/ui/Button';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/useAppStore';
-import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
+import { COLORS, FONT, SPACING } from '@/utils/constants';
 
 const MAX_NAME_LENGTH = 20;
 
 export default function UsernameScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const [name, setName] = useState(user.name);
@@ -46,101 +51,127 @@ export default function UsernameScreen() {
     router.replace('/(tabs)/home');
   };
 
+  const handleBack = () => {
+    router.replace('/(onboarding)/connect');
+  };
+
+  const isButtonDisabled = !trimmedName || !!error;
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.content}>
-        <SplitSolLogo size={80} />
-
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>Choose your display name</Text>
-          <Text style={styles.subtitle}>
-            This is how you will appear in groups, settlements, and your
-            members.
-          </Text>
+    <ScreenWrapper variant="onboarding" style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.backButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.formCard}>
-          <Input
-            label="Display name"
-            placeholder="Enter your name"
-            value={name}
-            onChangeText={setName}
-            autoFocus
-            autoCapitalize="words"
-            autoCorrect={false}
-            maxLength={MAX_NAME_LENGTH}
-            returnKeyType="done"
-            onSubmitEditing={handleSubmit}
-            error={error || undefined}
-          />
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Text style={styles.title}>What should we call you?</Text>
+            <Text style={styles.subtitle}>
+              This name will be visible to your group members
+            </Text>
 
-          <Text style={styles.counter}>
-            {trimmedName.length}/{MAX_NAME_LENGTH}
-          </Text>
+            <View style={styles.spacer} />
 
-          <Button
-            title="Continue to SplitSOL"
-            onPress={handleSubmit}
-            disabled={!trimmedName || !!error}
-            size="lg"
-            style={styles.primaryButton}
-          />
+            <Input
+              placeholder="Enter your name"
+              value={name}
+              onChangeText={setName}
+              autoFocus
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={MAX_NAME_LENGTH}
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+              error={error || undefined}
+              containerStyle={styles.inputContainer}
+            />
+            <Text style={styles.counter}>
+              {name.length}/{MAX_NAME_LENGTH}
+            </Text>
+
+            <View style={styles.spacerLarge} />
+
+            <Button
+              title="Continue"
+              onPress={handleSubmit}
+              variant="primary"
+              disabled={isButtonDisabled}
+              style={styles.button}
+            />
+          </Card>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+  },
+  header: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: SPACING.xxl,
-    paddingVertical: SPACING.xxxl,
-    gap: SPACING.xl,
+    justifyContent: 'center',
+    paddingBottom: 100,
   },
-  copyBlock: {
+  card: {
     alignItems: 'center',
-    gap: SPACING.sm,
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xxl,
   },
   title: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.hero,
-    fontWeight: FONT.weight.extrabold,
+    color: COLORS.bg.dark,
+    fontSize: 22,
+    fontWeight: FONT.weight.bold,
     textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
   subtitle: {
     color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
+    fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
-    maxWidth: 310,
+    maxWidth: 280,
   },
-  formCard: {
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    gap: SPACING.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 4,
+  spacer: {
+    height: 20,
+  },
+  spacerLarge: {
+    height: 24,
+  },
+  inputContainer: {
+    width: '100%',
+    marginBottom: SPACING.sm,
   },
   counter: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    textAlign: 'right',
+    color: COLORS.text.secondary,
+    fontSize: 12,
+    alignSelf: 'flex-end',
+    marginBottom: SPACING.lg,
   },
-  primaryButton: {
+  button: {
     width: '100%',
-    marginTop: SPACING.sm,
   },
 });

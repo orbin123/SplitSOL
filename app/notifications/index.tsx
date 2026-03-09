@@ -1,22 +1,29 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAppStore } from '@/store/useAppStore';
 import { COLORS, FONT, SPACING } from '@/utils/constants';
 import { timeAgo } from '@/utils/formatters';
 
-const NOTIFICATION_ICONS = {
-  invite: 'people-outline',
-  settlement: 'swap-horizontal-outline',
-  reminder: 'alarm-outline',
+const ICON_BG_COLORS = {
+  invite: 'rgba(59, 130, 246, 0.2)',
+  settlement: 'rgba(16, 185, 129, 0.2)',
+  reminder: 'rgba(124, 58, 237, 0.2)',
 } as const;
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const notifications = useAppStore((s) => s.notifications);
   const markNotificationRead = useAppStore((s) => s.markNotificationRead);
 
@@ -45,11 +52,11 @@ export default function NotificationsScreen() {
 
   if (items.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.lg + 56 }]}>
         <EmptyState
           emoji="🔔"
-          title="No notifications yet"
-          subtitle="Group activity, settlements, and reminders will show up here."
+          title="All caught up!"
+          subtitle="No new notifications"
         />
       </View>
     );
@@ -58,7 +65,10 @@ export default function NotificationsScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + SPACING.lg + 56 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {items.map((notification) => (
@@ -74,18 +84,40 @@ export default function NotificationsScreen() {
           }
         >
           <View style={styles.row}>
-            <View style={styles.iconWrap}>
+            {!notification.read && <View style={styles.unreadDot} />}
+            <View
+              style={[
+                styles.iconWrap,
+                { backgroundColor: ICON_BG_COLORS[notification.type] },
+              ]}
+            >
               <Ionicons
-                name={NOTIFICATION_ICONS[notification.type] as any}
+                name={
+                  notification.type === 'settlement'
+                    ? 'wallet-outline'
+                    : notification.type === 'invite'
+                      ? 'people-outline'
+                      : 'notifications-outline'
+                }
                 size={20}
-                color={COLORS.text.accent}
+                color={
+                  notification.type === 'settlement'
+                    ? COLORS.text.success
+                    : notification.type === 'invite'
+                      ? '#3B82F6'
+                      : COLORS.text.accent
+                }
               />
             </View>
             <View style={styles.body}>
-              <Text style={styles.message}>{notification.message}</Text>
+              <Text style={styles.title}>{notification.message}</Text>
               <Text style={styles.time}>{timeAgo(notification.timestamp)}</Text>
             </View>
-            {!notification.read && <View style={styles.unreadDot} />}
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={COLORS.text.tertiary}
+            />
           </View>
         </Card>
       ))}
@@ -96,11 +128,12 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'transparent',
   },
   content: {
-    padding: SPACING.lg,
-    gap: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.xxxl,
+    gap: SPACING.sm,
   },
   card: {
     paddingVertical: SPACING.md,
@@ -110,31 +143,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
   },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.bg.accent,
+    marginRight: SPACING.xs,
+  },
   iconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.bg.accentSoft,
   },
   body: {
     flex: 1,
   },
-  message: {
+  title: {
     color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.medium,
+    fontSize: 14,
+    fontWeight: FONT.weight.bold,
   },
   time: {
     color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: SPACING.xs,
-  },
-  unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#3B82F6',
+    fontSize: 12,
+    marginTop: 2,
   },
 });

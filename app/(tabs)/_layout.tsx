@@ -7,8 +7,10 @@ export default function TabLayout() {
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        headerStyle: { backgroundColor: COLORS.bg.primary },
+        headerStyle: { backgroundColor: 'transparent' },
+        headerTransparent: true,
         headerTintColor: COLORS.text.primary,
+        headerTitleStyle: { color: COLORS.bg.dark, fontWeight: '700' },
         headerShadowVisible: false,
       }}
     >
@@ -18,7 +20,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="activity"
-        options={{ title: 'Transactions' }}
+        options={{ title: 'Transactions', headerShown: false }}
       />
       <Tabs.Screen
         name="wallet"

@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Switch,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
@@ -21,21 +23,20 @@ import { useAppStore } from '@/store/useAppStore';
 import { buildMemberQrPayload } from '@/utils/memberQr';
 import { APP, COLORS, FONT, RADIUS, SOLANA, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { truncateAddress } from '@/utils/formatters';
+import { isValidWalletAddress } from '@/utils/memberQr';
 import { disconnectWalletSession } from '@/utils/mwa';
-import { requestNotificationPermission } from '@/utils/notifications';
 import { getSOLBalance } from '@/utils/solana';
 
 let QRCode: any = null;
 try {
   const mod = require('react-native-qrcode-svg');
   QRCode = mod.default || mod;
-} catch {}
+} catch { }
 
 export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
-  const members = useAppStore((s) => s.members);
   const setUser = useAppStore((s) => s.setUser);
   const setNotificationsEnabled = useAppStore((s) => s.setNotificationsEnabled);
 
@@ -43,6 +44,10 @@ export default function Profile() {
   const [refreshing, setRefreshing] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(user.name);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
 
   const walletAddress = user.walletAddress;
 
@@ -71,7 +76,7 @@ export default function Profile() {
   };
 
   const fetchBalance = useCallback(async () => {
-    if (!walletAddress) {
+    if (!walletAddress || !isValidWalletAddress(walletAddress)) {
       setBalance(null);
       return;
     }
@@ -97,353 +102,588 @@ export default function Profile() {
     setRefreshing(false);
   };
 
-  const copyAddress = async () => {
-    if (!walletAddress) return;
-    await Clipboard.setStringAsync(walletAddress);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', 'Full wallet address copied to clipboard.');
-  };
-
-  const handleToggleNotifications = async (enabled: boolean) => {
-    if (enabled) {
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        Alert.alert(
-          'Notifications Disabled',
-          'Permission was not granted, so notifications will stay off.',
-        );
-        setNotificationsEnabled(false);
-        return;
-      }
-    }
-
-    setNotificationsEnabled(enabled);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
   const memberQrValue =
     user.name && walletAddress
       ? buildMemberQrPayload(user.name, walletAddress)
       : null;
 
   return (
-    <ScrollView
+    <LinearGradient
+      colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
       style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + SPACING.xl },
-      ]}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={COLORS.text.secondary}
-        />
-      }
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
     >
-      <Card style={styles.profileCard}>
-        <Text style={styles.sectionEyebrow}>Profile</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + SPACING.xl },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.text.secondary}
+          />
+        }
+      >
+        <Text style={styles.headerTitle}>Profile</Text>
 
-        {editingName ? (
-          <View style={styles.editNameRow}>
-            <TextInput
-              style={styles.editNameInput}
-              value={draftName}
-              onChangeText={setDraftName}
-              autoFocus
-              maxLength={20}
-              returnKeyType="done"
-              onSubmitEditing={saveName}
-              onBlur={saveName}
-              selectTextOnFocus
-            />
-            <TouchableOpacity onPress={saveName} style={styles.inlineIconButton}>
-              <Ionicons name="checkmark-circle" size={28} color={COLORS.bg.accent} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setDraftName(user.name);
-              setEditingName(true);
-            }}
-            activeOpacity={0.75}
-          >
-            <View style={styles.rowCopy}>
-              <Text style={styles.fieldLabel}>Username</Text>
-              <Text style={styles.primaryValue}>{user.name || 'SplitSOL User'}</Text>
+        {/* Profile Hero */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroContent}>
+            <View style={styles.avatarWrapper}>
+              <Text style={styles.avatarText}>
+                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </Text>
             </View>
-            <Ionicons name="pencil-outline" size={18} color={COLORS.text.tertiary} />
-          </TouchableOpacity>
-        )}
 
-        <View style={styles.divider} />
+            {editingName ? (
+              <View style={styles.editNameRow}>
+                <TextInput
+                  style={styles.editNameInput}
+                  value={draftName}
+                  onChangeText={setDraftName}
+                  autoFocus
+                  maxLength={20}
+                  returnKeyType="done"
+                  onSubmitEditing={saveName}
+                  onBlur={saveName}
+                  selectTextOnFocus
+                />
+                <TouchableOpacity onPress={saveName} style={styles.inlineIconButton}>
+                  <Ionicons name="checkmark-circle" size={28} color={COLORS.bg.accent} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setDraftName(user.name);
+                  setEditingName(true);
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.heroName}>{user.name || 'SplitSOL User'}</Text>
+              </TouchableOpacity>
+            )}
 
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => {
-            void copyAddress();
-          }}
-          activeOpacity={0.75}
-          disabled={!walletAddress}
-        >
-          <View style={styles.rowCopy}>
-            <Text style={styles.fieldLabel}>Connected Wallet</Text>
-            <Text style={styles.secondaryValue}>
+            <Text style={styles.heroAddress}>
               {walletAddress ? truncateAddress(walletAddress, 8) : 'Not connected'}
             </Text>
+
+            {walletAddress && memberQrValue && QRCode && (
+              <TouchableOpacity
+                style={styles.qrIconBtn}
+                onPress={() => setShowQrModal(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="qr-code-outline" size={20} color="#374151" />
+              </TouchableOpacity>
+            )}
           </View>
-          {walletAddress && (
-            <Ionicons name="copy-outline" size={18} color={COLORS.text.tertiary} />
-          )}
-        </TouchableOpacity>
+        </View>
 
-        <View style={styles.divider} />
-
-        <View style={styles.row}>
-          <View style={styles.rowCopy}>
-            <Text style={styles.fieldLabel}>Current SOL Balance</Text>
-            <Text style={styles.primaryValue}>
-              {walletAddress && balance !== null ? `${balance.toFixed(3)} SOL` : '--'}
+        {!walletAddress && (
+          <View style={styles.glassCard}>
+            <Text style={styles.connectPrompt}>
+              Connect your wallet to settle on-chain and share your QR identity.
             </Text>
+            <ConnectButton />
           </View>
-          <Text style={styles.networkPill}>
-            {SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
-          </Text>
+        )}
+
+        {/* Settings List */}
+        <View style={styles.glassCard}>
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => router.push('/members' as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="people-outline" size={24} color="#374151" />
+            <Text style={styles.settingsLabel}>My Members</Text>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowNotificationModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={24} color="#374151" />
+            <Text style={styles.settingsLabel}>Notifications</Text>
+            <Text style={{ color: '#6B7280', fontSize: 16, marginRight: 8 }}>
+              {user.notificationsEnabled ? 'On' : 'Off'}
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+
+          <View style={styles.settingsRow}>
+            <Ionicons name="globe-outline" size={24} color="#374151" />
+            <Text style={styles.settingsLabel}>Network</Text>
+            <View style={styles.devnetPill}>
+              <Text style={styles.devnetPillText}>
+                {SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={() => router.push('/about' as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="information-circle-outline" size={24} color="#374151" />
+            <Text style={styles.settingsLabel}>About SplitSOL</Text>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
         </View>
-      </Card>
 
-      {walletAddress && QRCode && memberQrValue && (
-        <Card style={styles.qrCard}>
-          <Text style={styles.sectionTitle}>Your QR Code</Text>
-          <QRCode
-            value={memberQrValue}
-            size={184}
-            color={COLORS.text.primary}
-            backgroundColor="transparent"
-          />
-          <Text style={styles.qrHint}>Scan to add me on SplitSOL</Text>
-          <Text style={styles.qrSubhint}>
-            This QR shares your display name and wallet address.
-          </Text>
-        </Card>
-      )}
+        {/* Danger Section */}
+        {walletAddress && (
+          <View style={[styles.glassCard, styles.dangerCard]}>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                setShowDisconnectModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="power" size={24} color="#EF4444" />
+              <Text style={styles.dangerText}>Disconnect Wallet</Text>
+            </TouchableOpacity>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                setShowResetModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={24} color="#EF4444" />
+              <Text style={styles.dangerText}>Reset App Data</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {!walletAddress && (
-        <Card style={styles.connectCard}>
-          <Text style={styles.connectPrompt}>
-            Connect your wallet to settle on-chain and share your QR identity.
-          </Text>
-          <ConnectButton />
-        </Card>
-      )}
+        {walletAddress && memberQrValue && QRCode && (
+          <Modal
+            visible={showQrModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowQrModal(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setShowQrModal(false)}
+            >
+              <View style={styles.modalContent}>
+                <Card style={styles.qrModalCard}>
+                  <Text style={styles.qrModalTitle}>Your QR Code</Text>
+                  <QRCode
+                    value={memberQrValue}
+                    size={184}
+                    color={COLORS.text.primary}
+                    backgroundColor="transparent"
+                  />
+                  <Text style={styles.qrModalHint}>Scan to add me on SplitSOL</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowQrModal(false)}
+                    style={styles.qrModalClose}
+                  >
+                    <Text style={styles.qrModalCloseText}>Close</Text>
+                  </TouchableOpacity>
+                </Card>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        )}
 
-      <Card style={styles.actionCard} onPress={() => router.push('/members' as any)}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.sectionTitle}>My Members</Text>
-          <Text style={styles.sectionSub}>
-            {members.length} member{members.length === 1 ? '' : 's'}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
-      </Card>
-
-      <Card style={styles.toggleCard}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.sectionTitle}>Notification Settings</Text>
-          <Text style={styles.sectionSub}>
-            {user.notificationsEnabled ? 'Enabled' : 'Disabled'}
-          </Text>
-        </View>
-        <Switch
-          value={user.notificationsEnabled}
-          onValueChange={(value) => {
-            void handleToggleNotifications(value);
-          }}
-          trackColor={{ false: COLORS.border.default, true: COLORS.bg.accentSoft }}
-          thumbColor={
-            user.notificationsEnabled ? COLORS.bg.accent : COLORS.text.tertiary
-          }
-        />
-      </Card>
-
-      {walletAddress && (
-        <Card
-          style={styles.disconnectCard}
-          onPress={() => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            Alert.alert('Disconnect Wallet', 'Are you sure?', [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Disconnect',
-                style: 'destructive',
-                onPress: () => {
-                  void handleDisconnect();
-                },
-              },
-            ]);
-          }}
+        {/* Notification Settings Modal */}
+        <Modal
+          visible={showNotificationModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowNotificationModal(false)}
         >
-          <View style={styles.rowCopy}>
-            <Text style={styles.disconnectTitle}>Disconnect Wallet</Text>
-            <Text style={styles.sectionSub}>
-              Clears local auth and returns you to onboarding.
-            </Text>
-          </View>
-          <Ionicons name="log-out-outline" size={22} color={COLORS.text.danger} />
-        </Card>
-      )}
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowNotificationModal(false)}
+          >
+            <View style={styles.modalContent}>
+              <Card style={styles.notificationModalCard}>
+                <View style={styles.notificationModalHeader}>
+                  <Text style={styles.notificationModalTitle}>Notifications</Text>
+                  <TouchableOpacity onPress={() => setShowNotificationModal(false)} style={styles.notificationModalCloseBtn}>
+                    <Ionicons name="close" size={24} color={COLORS.text.tertiary} />
+                  </TouchableOpacity>
+                </View>
 
-      <Card style={styles.actionCard} onPress={() => router.push('/about' as any)}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.sectionTitle}>About {APP.NAME}</Text>
-          <Text style={styles.sectionSub}>
-            Learn how wallet auth and crypto group payments work.
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
-      </Card>
-    </ScrollView>
+                <Text style={styles.notificationModalDesc}>
+                  Receive real-time alerts for new expenses, settlements, and group activities.
+                </Text>
+
+                <View style={styles.notificationModalToggleRow}>
+                  <Text style={styles.notificationModalToggleLabel}>Push Notifications</Text>
+                  <Switch
+                    value={user.notificationsEnabled}
+                    onValueChange={(val) => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setNotificationsEnabled(val);
+                    }}
+                    trackColor={{ false: '#9CA3AF', true: COLORS.bg.accent }}
+                    thumbColor="#FFFFFF"
+                    ios_backgroundColor="#9CA3AF"
+                    style={{ transform: [{ scale: 1.15 }] }}
+                  />
+                </View>
+              </Card>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Disconnect Warning Modal */}
+        <Modal
+          visible={showDisconnectModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDisconnectModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowDisconnectModal(false)}
+          >
+            <View style={styles.modalContent}>
+              <Card style={styles.notificationModalCard}>
+                <View style={styles.notificationModalHeader}>
+                  <Text style={[styles.notificationModalTitle, { color: COLORS.bg.danger }]}>Disconnect Wallet</Text>
+                  <TouchableOpacity onPress={() => setShowDisconnectModal(false)} style={styles.notificationModalCloseBtn}>
+                    <Ionicons name="close" size={24} color={COLORS.text.tertiary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.notificationModalDesc}>
+                  Are you sure you want to disconnect your wallet?
+                </Text>
+
+                <View style={styles.modalActionRow}>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalCancelBtn]}
+                    onPress={() => setShowDisconnectModal(false)}
+                  >
+                    <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalDestructiveBtn]}
+                    onPress={() => {
+                      setShowDisconnectModal(false);
+                      void handleDisconnect();
+                    }}
+                  >
+                    <Text style={styles.modalDestructiveBtnText}>Disconnect</Text>
+                  </TouchableOpacity>
+                </View>
+              </Card>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Reset App Data Modal */}
+        <Modal
+          visible={showResetModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowResetModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowResetModal(false)}
+          >
+            <View style={styles.modalContent}>
+              <Card style={styles.notificationModalCard}>
+                <View style={styles.notificationModalHeader}>
+                  <Text style={[styles.notificationModalTitle, { color: COLORS.bg.danger }]}>Reset App Data</Text>
+                  <TouchableOpacity onPress={() => setShowResetModal(false)} style={styles.notificationModalCloseBtn}>
+                    <Ionicons name="close" size={24} color={COLORS.text.tertiary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.notificationModalDesc}>
+                  This will clear all local data. Are you sure?
+                </Text>
+
+                <View style={styles.modalActionRow}>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalCancelBtn]}
+                    onPress={() => setShowResetModal(false)}
+                  >
+                    <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalActionBtn, styles.modalDestructiveBtn]}
+                    onPress={() => {
+                      setShowResetModal(false);
+                      setUser('', null, null);
+                      router.replace('/(onboarding)/welcome');
+                    }}
+                  >
+                    <Text style={styles.modalDestructiveBtnText}>Reset</Text>
+                  </TouchableOpacity>
+                </View>
+              </Card>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
   },
   content: {
-    padding: SPACING.xl,
-    paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
-    gap: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: TAB_BAR_HEIGHT + SPACING.xxxl + 20,
   },
-  profileCard: {
-    gap: SPACING.md,
+  headerTitle: {
+    color: '#111827',
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    marginBottom: SPACING.xxxl,
   },
-  sectionEyebrow: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
-  },
-  sectionSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: SPACING.xs,
-  },
-  row: {
-    flexDirection: 'row',
+  heroCard: {
+    marginBottom: SPACING.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
+    paddingVertical: 36,
   },
-  rowCopy: {
-    flex: 1,
+  heroContent: {
+    alignItems: 'center',
   },
-  fieldLabel: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'uppercase',
+  avatarWrapper: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#EBE0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    color: '#7C3AED',
+    fontSize: 40,
+    fontWeight: '800',
+  },
+  heroName: {
+    color: '#111827',
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  heroAddress: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontFamily: 'Courier',
     letterSpacing: 1,
+    marginBottom: 16,
   },
-  primaryValue: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-    marginTop: SPACING.xs,
-  },
-  secondaryValue: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
-    marginTop: SPACING.xs,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border.default,
+  qrIconBtn: {
+    backgroundColor: '#F3F4F6',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
     gap: SPACING.sm,
   },
   editNameInput: {
     flex: 1,
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
+    color: '#111827',
+    fontSize: 24,
+    fontWeight: '800',
     borderBottomWidth: 2,
-    borderBottomColor: COLORS.bg.accent,
+    borderBottomColor: '#7C3AED',
     paddingVertical: SPACING.xs,
+    minWidth: 120,
+    textAlign: 'center',
   },
   inlineIconButton: {
     padding: SPACING.xs,
   },
-  networkPill: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-    backgroundColor: COLORS.bg.accentSoft,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    overflow: 'hidden',
+    marginBottom: SPACING.lg,
   },
-  qrCard: {
+  connectPrompt: {
+    color: '#6B7280',
+    fontSize: FONT.size.md,
+    textAlign: 'center',
+    margin: SPACING.xl,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    gap: 16,
+  },
+  settingsLabel: {
+    flex: 1,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  devnetPill: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  devnetPillText: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+    marginLeft: 60,
+  },
+  dangerCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+  },
+  dangerText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 320,
+  },
+  qrModalCard: {
     alignItems: 'center',
     paddingVertical: SPACING.xxl,
     gap: SPACING.md,
   },
-  qrHint: {
+  qrModalTitle: {
+    color: COLORS.bg.dark,
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.bold,
+  },
+  qrModalHint: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+  },
+  qrModalClose: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+  },
+  qrModalCloseText: {
+    color: COLORS.bg.accent,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
+  },
+  notificationModalCard: {
+    padding: SPACING.xl,
+  },
+  notificationModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  notificationModalTitle: {
+    color: COLORS.bg.dark,
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
+  },
+  notificationModalCloseBtn: {
+    padding: SPACING.xs,
+  },
+  notificationModalDesc: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.md,
+    lineHeight: 22,
+    marginBottom: SPACING.xl,
+  },
+  notificationModalToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.bg.tertiary,
+    padding: SPACING.lg,
+    borderRadius: RADIUS.lg,
+  },
+  notificationModalToggleLabel: {
     color: COLORS.text.primary,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.semibold,
   },
-  qrSubhint: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  connectCard: {
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.xxl,
-  },
-  connectPrompt: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
-    textAlign: 'center',
-  },
-  actionCard: {
+  modalActionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     gap: SPACING.md,
+    marginTop: SPACING.md,
   },
-  toggleCard: {
-    flexDirection: 'row',
+  modalActionBtn: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
+    justifyContent: 'center',
   },
-  disconnectCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
+  modalCancelBtn: {
+    backgroundColor: COLORS.bg.tertiary,
   },
-  disconnectTitle: {
-    color: COLORS.text.danger,
+  modalCancelBtnText: {
+    color: COLORS.text.primary,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.semibold,
   },
+  modalDestructiveBtn: {
+    backgroundColor: COLORS.bg.danger,
+  },
+  modalDestructiveBtnText: {
+    color: COLORS.text.white,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.bold,
+  },
 });
+

@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -18,34 +20,19 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { formatCurrency, timeAgo } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { getTotalExpenses } from '@/utils/calculations';
-import { COLORS, GRADIENTS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { buildGroupInviteQrPayload } from '@/utils/memberQr';
 import { Expense, SimplifiedDebt } from '@/store/types';
 
+let QRCode: any = null;
+try {
+  const mod = require('react-native-qrcode-svg');
+  QRCode = mod.default || mod;
+} catch { }
+
 type Tab = 'expenses' | 'balances';
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  food: '🍽',
-  transport: '🚕',
-  stay: '🏨',
-  shopping: '🛍',
-  entertainment: '🎬',
-  other: '📝',
-};
-
-const EXPENSE_BG = [
-  '#FEE2E2', '#FEF3C7', '#D1FAE5', '#DBEAFE',
-  '#EDE9FE', '#FCE7F3', '#FFEDD5', '#CCFBF1',
-];
-
-function getExpenseBg(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return EXPENSE_BG[Math.abs(hash) % EXPENSE_BG.length];
-}
 
 export default function GroupDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,7 +43,17 @@ export default function GroupDetail() {
   const removeMember = useAppStore((s) => s.removeMember);
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const getBalances = useAppStore((s) => s.getBalances);
+  const addNotification = useAppStore((s) => s.addNotification);
+  const members = useAppStore((s) => s.members);
+  const addGroupMember = useAppStore((s) => s.addGroupMember);
+
   const [activeTab, setActiveTab] = useState<Tab>('expenses');
+  const [showInviteQr, setShowInviteQr] = useState(false);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [pickerSelection, setPickerSelection] = useState<string[]>([]);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   if (!group) {
     return (
@@ -67,218 +64,304 @@ export default function GroupDetail() {
   }
 
   const debts = getSimplifiedDebts(id);
+  const balances = getBalances(id);
   const totalExpenses = getTotalExpenses(group.expenses);
+  const myBalance = balances.find((b) => {
+    const member = group.members.find((m) => m.id === b.memberId);
+    return member?.isCurrentUser;
+  })?.amount ?? 0;
+
+  const getAvailableMembers = () => {
+    const groupMemberIds = group.members.map((m) => m.id);
+    return [...members]
+      .filter((m) => !groupMemberIds.includes(m.id))
+      .sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  };
+
+  const availableMembers = getAvailableMembers();
+
+  const togglePickerMember = (memberId: string) => {
+    setPickerSelection((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId],
+    );
+  };
+
+  const confirmPickerSelection = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    pickerSelection.forEach((memberId) => {
+      const globalMember = members.find((m) => m.id === memberId);
+      if (globalMember) {
+        addGroupMember(id, globalMember.name, globalMember.walletAddress, globalMember.id);
+      }
+    });
+    setShowMemberPicker(false);
+    setPickerSelection([]);
+    setShowSuccessModal(true);
+  };
 
   const renderExpenseItem = ({ item }: { item: Expense }) => {
     const payer = group.members.find((m) => m.id === item.paidBy);
-    const emoji = CATEGORY_EMOJI[item.category || 'other'] || '📝';
+    const isMePayer = payer?.isCurrentUser;
+    const payerName = isMePayer ? 'You' : payer?.name?.split(' ')[0] ?? 'Unknown';
+    const splitCount = item.splitAmong.length;
+
+    const mySplit = item.splitAmong.find((uid) => {
+      const mem = group.members.find((m) => m.id === uid);
+      return mem?.isCurrentUser;
+    });
+
+    let shareText1 = '';
+    let shareText2 = '';
+    let shareColor = COLORS.text.secondary;
+
+    if (mySplit) {
+      const shareAmt = item.amount / splitCount;
+      if (isMePayer) {
+        const owedToMe = item.amount - shareAmt;
+        shareText1 = 'You lent';
+        shareText2 = `${formatCurrency(owedToMe)}`;
+        shareColor = COLORS.text.success;
+      } else {
+        shareText1 = 'You owe';
+        shareText2 = `${formatCurrency(shareAmt)}`;
+        shareColor = COLORS.text.danger;
+      }
+    } else {
+      if (isMePayer) {
+        shareText1 = 'You lent';
+        shareText2 = `${formatCurrency(item.amount)}`;
+        shareColor = COLORS.text.success;
+      } else {
+        shareText1 = 'Not involved';
+        shareText2 = '';
+        shareColor = COLORS.text.tertiary;
+      }
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const d = new Date(item.createdAt);
+    const month = months[d.getMonth()];
+    const day = d.getDate();
+    let hours = d.getHours();
+    const mins = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+
+    const dateLine1 = `${month} ${day}, ${hours}:${mins}`;
+    const dateLine2 = ampm;
 
     return (
       <Card style={styles.expenseCard}>
-        <View style={styles.expenseRow}>
-          <View
-            style={[
-              styles.expenseIconWrap,
-              { backgroundColor: getExpenseBg(item.description) },
-            ]}
-          >
-            <Text style={styles.expenseEmoji}>{emoji}</Text>
+        <View style={styles.expenseRowOuter}>
+          <View style={styles.expenseAvatar}>
+            <Avatar name={payer?.name ?? 'Unknown'} size={46} />
           </View>
-          <View style={styles.expenseInfo}>
-            <Text style={styles.expenseDesc}>{item.description}</Text>
-            <Text style={styles.expenseMeta}>
-              Paid by {payer?.name ?? 'Unknown'} · {timeAgo(item.createdAt)}
-            </Text>
+          <View style={styles.expenseInfoCol}>
+
+            <View style={styles.expenseHeaderRow}>
+              <Text style={styles.expenseDesc} numberOfLines={1}>{item.description}</Text>
+              <Text style={styles.expenseAmountMain}>{formatCurrency(item.amount)}</Text>
+            </View>
+
+            <View style={styles.expensePillRow}>
+              <View style={styles.payerPill}>
+                <Text style={styles.payerPillText}>Paid by {payerName}</Text>
+              </View>
+            </View>
+
+            <View style={styles.expenseFooterRow}>
+              <View style={styles.expenseFooterLeft}>
+                <Text style={styles.splitText}>
+                  Split {splitCount} way{splitCount !== 1 ? 's' : ''} •{' '}
+                  <Text style={[styles.splitText, { color: shareColor }]}>{shareText1}</Text>
+                </Text>
+                {shareText2 ? (
+                  <Text style={[styles.splitText, { color: shareColor }]}>{shareText2}</Text>
+                ) : null}
+              </View>
+              <View style={styles.expenseDateContainer}>
+                <Text style={styles.expenseDateStr}>{dateLine1}</Text>
+                <Text style={styles.expenseDateStr}>{dateLine2}</Text>
+              </View>
+            </View>
+
           </View>
-          <Text style={styles.expenseAmount}>
-            {formatCurrency(item.amount)}
-          </Text>
         </View>
       </Card>
     );
   };
 
-  const renderDebtItem = (debt: SimplifiedDebt, index: number) => (
-    <Card key={index} style={styles.debtCard}>
-      <View style={styles.debtRow}>
-        <Avatar name={debt.from.name} size={36} />
-        <View style={styles.debtInfo}>
-          <Text style={styles.debtText}>
-            <Text style={styles.debtName}>{debt.from.name}</Text>
-            {' owes '}
-            <Text style={styles.debtName}>{debt.to.name}</Text>
-          </Text>
-          <Text style={styles.debtAmount}>
-            {formatCurrency(debt.amount)}
-          </Text>
+  const renderDebtItem = (debt: SimplifiedDebt, index: number) => {
+    const isYouOwe = debt.from.isCurrentUser;
+    const label = isYouOwe
+      ? `You owe ${debt.to.name}`
+      : `${debt.from.name} owes you`;
+    const amountColor = isYouOwe ? COLORS.text.danger : COLORS.text.success;
+
+    return (
+      <Card key={index} style={styles.debtCard}>
+        <View style={styles.debtRow}>
+          <View style={styles.debtAvatars}>
+            <Avatar name={debt.from.name} size={36} />
+            <View style={styles.debtArrowWrap}>
+              <Ionicons name="arrow-forward" size={16} color={COLORS.bg.accent} />
+            </View>
+            <Avatar name={debt.to.name} size={36} />
+          </View>
+          <View style={styles.debtInfo}>
+            <Text style={styles.debtLabel}>{label}</Text>
+            <Text style={[styles.debtAmount, { color: amountColor }]}>
+              {formatCurrency(debt.amount)}
+            </Text>
+          </View>
+          <View style={styles.debtActions}>
+            {debt.from.isCurrentUser ? (
+              <Button
+                title="Settle"
+                variant="primary"
+                size="sm"
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  router.push(
+                    `/group/${id}/settle/${debt.from.id}_${debt.to.id}`,
+                  );
+                }}
+              />
+            ) : (
+              <Button
+                title="Remind"
+                variant="secondary"
+                size="sm"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  addNotification({
+                    type: 'reminder',
+                    relatedGroupId: id,
+                    relatedPaymentId: null,
+                    message: `Reminder: ${debt.from.name} owes ${formatCurrency(debt.amount)} to ${debt.to.name} in ${group.name}.`,
+                  });
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert('Reminder Sent', 'A local reminder has been added to notifications.');
+                }}
+              />
+            )}
+          </View>
         </View>
-        <Button
-          title="Settle"
-          variant="primary"
-          size="sm"
-          disabled={!debt.from.isCurrentUser}
-          onPress={() => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            router.push(
-              `/group/${id}/settle/${debt.from.id}_${debt.to.id}`,
-            );
-          }}
-        />
-      </View>
-    </Card>
-  );
+      </Card>
+    );
+  };
+
+  const openSettings = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowSettingsModal(true);
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Custom Header */}
+    <LinearGradient
+      colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
+      style={[styles.container, { paddingTop: insets.top }]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      {/* Header */}
       <View style={styles.headerBar}>
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.back();
           }}
-          style={styles.backBtn}
+          style={styles.backBtnWrapper}
           activeOpacity={0.7}
         >
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={COLORS.text.primary}
-          />
+          <View style={styles.backBtnCircle}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </View>
         </TouchableOpacity>
-        <Text style={styles.headerEmoji}>{group.emoji}</Text>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {group.name}
-        </Text>
-        <View style={{ flex: 1 }} />
+
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerEmoji}>{group.emoji}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {group.name}
+          </Text>
+        </View>
+
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            Alert.alert(
-              'Group Options',
-              `Manage "${group.name}"`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete Group',
-                  style: 'destructive',
-                  onPress: () => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                    Alert.alert(
-                      'Delete Group',
-                      'This will permanently delete this group and all its expenses. This cannot be undone.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete',
-                          style: 'destructive',
-                          onPress: () => {
-                            deleteGroup(id);
-                            router.back();
-                          },
-                        },
-                      ],
-                    );
-                  },
-                },
-              ],
-            );
-          }}
+          style={styles.settingsBtn}
+          onPress={openSettings}
         >
-          <Text style={styles.editBtn}>Edit</Text>
+          <Ionicons name="settings-outline" size={24} color="#111827" />
         </TouchableOpacity>
       </View>
 
-      {/* Members Row */}
-      <View style={styles.membersRow}>
-        {group.members.slice(0, 6).map((member) => (
-          <TouchableOpacity
-            key={member.id}
-            style={styles.memberAvatar}
-            activeOpacity={0.7}
-            onLongPress={() => {
-              if (member.isCurrentUser) return;
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              const balances = getBalances(id);
-              const memberBalance = balances.find((b) => b.memberId === member.id);
-              const hasBalance = memberBalance && Math.abs(memberBalance.amount) > 0.01;
+      {/* Hero Card */}
+      <Card style={styles.heroCard}>
+        <View style={styles.heroContent}>
+          <Text style={styles.heroLabel}>Total group spending</Text>
+          <Text style={styles.heroTotalAmount}>
+            {formatCurrency(totalExpenses).split(' ')[0]} <Text style={styles.heroTotalCurrency}>USDC</Text>
+          </Text>
 
-              if (hasBalance) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                Alert.alert(
-                  'Pending Balance',
-                  `${member.name} has an outstanding balance of ${formatCurrency(Math.abs(memberBalance.amount))}. Removing them may result in unresolvable debts. Remove anyway?`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Remove',
-                      style: 'destructive',
-                      onPress: () => removeMember(id, member.id),
-                    },
-                  ],
-                );
-              } else {
-                Alert.alert(
-                  'Remove Member',
-                  `Remove ${member.name} from this group?`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Remove',
-                      style: 'destructive',
-                      onPress: () => removeMember(id, member.id),
-                    },
-                  ],
-                );
-              }
-            }}
-          >
-            <Avatar name={member.name} size={36} />
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity
-          style={styles.addMemberBtn}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push(`/group/${id}/add-member`);
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={18} color={COLORS.text.secondary} />
-        </TouchableOpacity>
-        <Text style={styles.memberCount}>
-          {group.members.length} members
-        </Text>
-      </View>
-
-      {/* Total Expenses Gradient Card */}
-      <View style={styles.summaryWrap}>
-        <LinearGradient
-          colors={GRADIENTS.purple}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.summaryCard}
-        >
-          <Text style={styles.summaryLabel}>TOTAL EXPENSES</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryAmount}>
-              {formatCurrency(totalExpenses)}
-            </Text>
-            <View style={styles.expenseCountBadge}>
-              <Text style={styles.expenseCountText}>
-                {group.expenses.length} expense
-                {group.expenses.length !== 1 ? 's' : ''}
+          <View style={styles.heroBalanceRow}>
+            <View style={styles.heroBalanceCol}>
+              <Text style={styles.heroLabel}>Your balance</Text>
+              <Text style={[styles.heroMyBalance, myBalance >= 0 ? styles.heroBalanceGreen : styles.heroBalanceRed]}>
+                {myBalance > 0 ? '+' : ''}{formatCurrency(myBalance)}
               </Text>
             </View>
+            <View style={styles.heroAvatars}>
+              {group.members.slice(0, 3).map((member, idx) => (
+                <View key={member.id} style={[styles.avatarOverlap, idx > 0 && { marginLeft: -12 }]}>
+                  <Avatar name={member.name} size={32} />
+                </View>
+              ))}
+              {group.members.length > 3 && (
+                <View style={[styles.avatarOverlap, styles.avatarOverflow, { marginLeft: -12 }]}>
+                  <Text style={styles.avatarOverflowText}>+{group.members.length - 3}</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </LinearGradient>
+        </View>
+      </Card>
+
+      {/* Action Buttons */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={styles.primaryActionBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/group/${id}/add-split` as any);
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={20} color="#FFF" />
+          <Text style={styles.primaryActionText}>Add Expense</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryActionBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowInviteQr(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="push-outline" size={20} color="#111827" />
+          <Text style={styles.secondaryActionText}>Invite Member</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Tab Switcher */}
-      <View style={styles.tabs}>
+      {/* Segmented control */}
+      <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'expenses' && styles.tabActive]}
+          style={[styles.tabSegment, activeTab === 'expenses' && styles.tabSegmentActive]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setActiveTab('expenses');
@@ -294,7 +377,7 @@ export default function GroupDetail() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'balances' && styles.tabActive]}
+          style={[styles.tabSegment, activeTab === 'balances' && styles.tabSegmentActive]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setActiveTab('balances');
@@ -326,6 +409,7 @@ export default function GroupDetail() {
             renderItem={renderExpenseItem}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={styles.cardGap} />}
           />
         )
       ) : debts.length === 0 ? (
@@ -339,31 +423,318 @@ export default function GroupDetail() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {debts.map(renderDebtItem)}
+          {debts.map((d, i) => (
+            <React.Fragment key={i}>
+              {renderDebtItem(d, i)}
+              <View style={styles.cardGap} />
+            </React.Fragment>
+          ))}
         </ScrollView>
       )}
 
-      {/* Add Split Button */}
-      {activeTab === 'expenses' && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push(`/group/${id}/add-split` as any);
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={28} color={COLORS.text.white} />
-        </TouchableOpacity>
-      )}
-    </View>
+      {/* Group Invite QR Modal */}
+      <Modal
+        visible={showInviteQr}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInviteQr(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowInviteQr(false)}>
+          <Pressable style={styles.modalCard} onPress={() => { }}>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowInviteQr(false)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={20} color={COLORS.text.secondary} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Invite to Group</Text>
+            <Text style={styles.modalSubtitle}>
+              Have someone scan this to join <Text style={styles.modalGroupName}>{group.name}</Text>
+            </Text>
+            {QRCode ? (
+              <View style={styles.qrWrap}>
+                <QRCode
+                  value={buildGroupInviteQrPayload(
+                    group.id,
+                    group.inviteCode ?? group.id.slice(0, 8),
+                    group.name,
+                  )}
+                  size={220}
+                  color={COLORS.text.primary}
+                  backgroundColor="transparent"
+                />
+              </View>
+            ) : (
+              <Text style={styles.qrFallback}>QR unavailable</Text>
+            )}
+            <Text style={styles.modalEmoji}>{group.emoji}</Text>
+            <Text style={styles.modalGroupLabel}>{group.name}</Text>
+            <Text style={styles.modalHint}>Share to invite members · SplitSOL</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Member Picker Modal */}
+      <Modal
+        visible={showMemberPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMemberPicker(false)}
+      >
+        <View style={pickerStyles.overlay}>
+          <View style={pickerStyles.card}>
+            {/* Header */}
+            <View style={pickerStyles.header}>
+              <Text style={pickerStyles.title}>Select Members</Text>
+              <TouchableOpacity
+                onPress={() => setShowMemberPicker(false)}
+                style={pickerStyles.closeBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={pickerStyles.subtitle}>
+              Choose from your existing members
+            </Text>
+
+            {availableMembers.length === 0 ? (
+              <View style={pickerStyles.emptyWrap}>
+                <EmptyState
+                  emoji="👥"
+                  title="No available members"
+                  subtitle="All your members are already in this group, or you have no other members."
+                />
+              </View>
+            ) : (
+              <FlatList
+                data={availableMembers}
+                keyExtractor={(item) => item.id}
+                style={pickerStyles.list}
+                contentContainerStyle={pickerStyles.listContent}
+                showsVerticalScrollIndicator={false}
+                ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                renderItem={({ item }) => {
+                  const isSelected = pickerSelection.includes(item.id);
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        pickerStyles.memberRow,
+                        isSelected && pickerStyles.memberRowSelected,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => togglePickerMember(item.id)}
+                    >
+                      <Avatar name={item.name} size={44} />
+                      <View style={pickerStyles.memberInfo}>
+                        <View style={pickerStyles.memberNameRow}>
+                          <Text style={pickerStyles.memberName}>{item.name}</Text>
+                          {item.isFavorite && (
+                            <Text style={pickerStyles.favBadge}>Favorite</Text>
+                          )}
+                        </View>
+                        {item.walletAddress && (
+                          <View style={pickerStyles.walletRow}>
+                            <View style={pickerStyles.walletDot} />
+                            <Text style={pickerStyles.walletLabel}>Wallet connected</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View
+                        style={[
+                          pickerStyles.checkbox,
+                          isSelected && pickerStyles.checkboxSelected,
+                        ]}
+                      >
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+
+            {/* Bottom actions */}
+            <View style={pickerStyles.actions}>
+              <Button
+                title={
+                  pickerSelection.length > 0
+                    ? `Add ${pickerSelection.length} Member${pickerSelection.length === 1 ? '' : 's'}`
+                    : 'Select Members'
+                }
+                onPress={confirmPickerSelection}
+                disabled={pickerSelection.length === 0}
+                size="lg"
+                style={pickerStyles.confirmBtn}
+              />
+              <TouchableOpacity
+                onPress={() => setShowMemberPicker(false)}
+                activeOpacity={0.7}
+                style={pickerStyles.cancelWrap}
+              >
+                <Text style={pickerStyles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Settings Options Modal */}
+      <Modal
+        visible={showSettingsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSettingsModal(false)}>
+          <Pressable style={styles.actionSheetCard} onPress={() => { }}>
+            <View style={styles.actionSheetHeader}>
+              <Text style={styles.actionSheetTitle}>Group Options</Text>
+              <Text style={styles.actionSheetSubtitle}>Manage "{group.name}"</Text>
+            </View>
+
+            <View style={styles.actionSheetButtons}>
+              <TouchableOpacity
+                style={styles.actionSheetBtn}
+                onPress={() => {
+                  setShowSettingsModal(false);
+                  setTimeout(() => setShowInviteQr(true), 300);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.actionSheetIconBg}>
+                  <Ionicons name="qr-code-outline" size={20} color={COLORS.text.primary} />
+                </View>
+                <Text style={styles.actionSheetBtnText}>Invite via QR</Text>
+              </TouchableOpacity>
+
+              <View style={styles.actionSheetDivider} />
+
+              <TouchableOpacity
+                style={styles.actionSheetBtn}
+                onPress={() => {
+                  setShowSettingsModal(false);
+                  setTimeout(() => {
+                    setPickerSelection([]);
+                    setShowMemberPicker(true);
+                  }, 300);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.actionSheetIconBg}>
+                  <Ionicons name="person-add-outline" size={20} color={COLORS.text.primary} />
+                </View>
+                <Text style={styles.actionSheetBtnText}>Add Existing Member</Text>
+              </TouchableOpacity>
+
+              <View style={styles.actionSheetDivider} />
+
+              <TouchableOpacity
+                style={styles.actionSheetBtn}
+                onPress={() => {
+                  setShowSettingsModal(false);
+                  setTimeout(() => setShowDeleteConfirmModal(true), 300);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.actionSheetIconBg, { backgroundColor: '#FEE2E2' }]}>
+                  <Ionicons name="trash-outline" size={20} color={COLORS.bg.danger} />
+                </View>
+                <Text style={[styles.actionSheetBtnText, { color: COLORS.text.danger }]}>Delete Group</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionSheetCancelBtn}
+              onPress={() => setShowSettingsModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.actionSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteConfirmModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowDeleteConfirmModal(false)}>
+          <Pressable style={styles.actionSheetCard} onPress={() => { }}>
+            <View style={styles.warningIconWrap}>
+              <Ionicons name="alert-circle" size={48} color={COLORS.bg.danger} />
+            </View>
+            <Text style={styles.modalTitle}>Delete Group?</Text>
+            <Text style={[styles.modalSubtitle, { paddingHorizontal: 16 }]}>
+              This will permanently delete this group and all its expenses. This action cannot be undone.
+            </Text>
+
+            <View style={styles.modalActionRow}>
+              <Button
+                title="Cancel"
+                variant="secondary"
+                size="lg"
+                onPress={() => setShowDeleteConfirmModal(false)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Delete"
+                variant="danger"
+                size="lg"
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  setShowDeleteConfirmModal(false);
+                  deleteGroup(id);
+                  router.back();
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSuccessModal(false)}>
+          <Pressable style={[styles.actionSheetCard, { alignItems: 'center' }]} onPress={() => { }}>
+            <View style={styles.successIconWrap}>
+              <Ionicons name="checkmark-circle" size={48} color={COLORS.bg.success} />
+            </View>
+            <Text style={styles.modalTitle}>Members Added</Text>
+            <Text style={styles.modalSubtitle}>
+              The selected members were successfully added to the group.
+            </Text>
+
+            <Button
+              title="Done"
+              variant="primary"
+              size="lg"
+              onPress={() => setShowSuccessModal(false)}
+              style={{ width: '100%', marginTop: 8 }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
   },
   notFound: {
     color: COLORS.text.secondary,
@@ -375,212 +746,600 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
-    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  backBtnWrapper: {
+    marginRight: 16,
+  },
+  backBtnCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
   },
   headerEmoji: {
     fontSize: 24,
   },
   headerTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
-    maxWidth: 180,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
   },
-  editBtn: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.semibold,
+  settingsBtn: {
+    paddingLeft: 12,
   },
 
-  membersRow: {
+  heroCard: {
+    marginHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    backgroundColor: 'transparent',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    padding: SPACING.xl,
+  },
+  heroContent: {
+    width: '100%',
+  },
+  heroLabel: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  heroTotalAmount: {
+    color: '#111827',
+    fontSize: 34,
+    fontWeight: '900',
+    marginBottom: 16,
+    letterSpacing: -0.5,
+  },
+  heroTotalCurrency: {
+    color: '#9CA3AF',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  heroBalanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  heroBalanceCol: {
+    flex: 1,
+  },
+  heroMyBalance: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  heroBalanceGreen: {
+    color: '#10B981',
+  },
+  heroBalanceRed: {
+    color: '#EF4444',
+  },
+  heroAvatars: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    marginBottom: SPACING.lg,
   },
-  memberAvatar: {
-    marginRight: -4,
+  avatarOverlap: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    borderRadius: 20,
   },
-  addMemberBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.bg.tertiary,
-    borderWidth: 1.5,
-    borderColor: COLORS.border.default,
-    borderStyle: 'dashed',
+  avatarOverflow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: SPACING.sm,
   },
-  memberCount: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginLeft: SPACING.md,
+  avatarOverflowText: {
+    color: '#111827',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
-  summaryWrap: {
+  actionRow: {
+    flexDirection: 'row',
     paddingHorizontal: SPACING.xl,
+    gap: SPACING.md,
     marginBottom: SPACING.lg,
   },
-  summaryCard: {
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xxl,
-    gap: SPACING.sm,
-  },
-  summaryLabel: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    letterSpacing: 1,
-  },
-  summaryRow: {
+  primaryActionBtn: {
+    flex: 1,
     flexDirection: 'row',
+    backgroundColor: '#7C3AED',
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
-    gap: SPACING.md,
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  summaryAmount: {
-    color: COLORS.text.primary,
-    fontSize: 28,
-    fontWeight: FONT.weight.extrabold,
+  primaryActionText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  expenseCountBadge: {
-    backgroundColor: COLORS.bg.accentSoft,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+  secondaryActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  expenseCountText: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
+  secondaryActionText: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
   },
 
-  tabs: {
+  tabContainer: {
     flexDirection: 'row',
     marginHorizontal: SPACING.xl,
-    backgroundColor: COLORS.bg.tertiary,
-    borderRadius: RADIUS.md,
-    padding: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 14,
+    padding: 6,
     marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
-  tab: {
+  tabSegment: {
     flex: 1,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: RADIUS.sm,
+    borderRadius: 10,
   },
-  tabActive: {
-    backgroundColor: COLORS.bg.secondary,
+  tabSegmentActive: {
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
   tabText: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
+    color: '#6B7280',
+    fontSize: 15,
+    fontWeight: '600',
   },
   tabTextActive: {
-    color: COLORS.text.primary,
+    color: '#111827',
+    fontWeight: '800',
   },
 
   listContent: {
-    padding: SPACING.xl,
-    paddingTop: SPACING.sm,
-    gap: SPACING.sm,
-    paddingBottom: 80,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xs,
+    paddingBottom: 40,
+  },
+  cardGap: {
+    height: 12,
   },
 
   expenseCard: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
-  expenseRow: {
+  expenseRowOuter: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  expenseIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
+  expenseAvatar: {
+    marginRight: 12,
   },
-  expenseEmoji: {
-    fontSize: 20,
-  },
-  expenseInfo: {
+  expenseInfoCol: {
     flex: 1,
-    marginRight: SPACING.md,
+  },
+  expenseHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   expenseDesc: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.medium,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
   },
-  expenseMeta: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: 2,
+  expenseAmountMain: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
   },
-  expenseAmount: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.bold,
+  expensePillRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  payerPill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  payerPillText: {
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  expenseFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  expenseFooterLeft: {
+    flex: 1,
+  },
+  splitText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  expenseDateContainer: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+  },
+  expenseDateStr: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
   },
 
   debtCard: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
   debtRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
   },
+  debtAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  debtArrowWrap: {
+    paddingHorizontal: SPACING.xs,
+  },
   debtInfo: {
     flex: 1,
   },
-  debtText: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-  },
-  debtName: {
+  debtLabel: {
     color: COLORS.text.primary,
-    fontWeight: FONT.weight.semibold,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.bold,
   },
   debtAmount: {
-    color: COLORS.text.danger,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.bold,
     marginTop: 2,
   },
+  debtActions: {
+    minWidth: 80,
+  },
 
-  fab: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  modalCard: {
+    backgroundColor: COLORS.bg.secondary,
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.xxl,
+    width: '100%',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  modalCloseBtn: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.bg.accent,
+    top: SPACING.lg,
+    right: SPACING.lg,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.bg.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.bg.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+  },
+  modalTitle: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
+    marginTop: SPACING.xs,
+  },
+  modalSubtitle: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  modalGroupName: {
+    color: COLORS.text.primary,
+    fontWeight: FONT.weight.semibold,
+  },
+  qrWrap: {
+    padding: SPACING.lg,
+    backgroundColor: COLORS.bg.primary,
+    borderRadius: RADIUS.lg,
+    marginVertical: SPACING.sm,
+  },
+  qrFallback: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    marginVertical: SPACING.xxl,
+  },
+  modalEmoji: {
+    fontSize: 28,
+    marginTop: SPACING.md,
+  },
+  modalGroupLabel: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.lg,
+    fontWeight: FONT.weight.bold,
+  },
+  modalHint: {
+    color: COLORS.text.tertiary,
+    fontSize: FONT.size.xs,
+    marginTop: SPACING.xs,
+  },
+
+  /* Action Sheet Styles */
+  actionSheetCard: {
+    backgroundColor: COLORS.bg.secondary,
+    borderRadius: 24,
+    padding: SPACING.xl,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  actionSheetHeader: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  actionSheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  actionSheetSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  actionSheetButtons: {
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  actionSheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  actionSheetIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  actionSheetBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  actionSheetDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginLeft: 72,
+  },
+  actionSheetCancelBtn: {
+    marginTop: 16,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSheetCancelText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
+  warningIconWrap: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  successIconWrap: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+});
+
+/* ── Member Picker Modal Styles ── */
+const pickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  card: {
+    backgroundColor: COLORS.bg.secondary,
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.xxl,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginBottom: SPACING.xs,
+  },
+  title: {
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
+    color: COLORS.text.primary,
+  },
+  closeBtn: {
+    position: 'absolute',
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.bg.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subtitle: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  emptyWrap: {
+    paddingVertical: SPACING.xxxl,
+  },
+  list: {
+    flexGrow: 0,
+    maxHeight: 340,
+  },
+  listContent: {
+    paddingBottom: SPACING.sm,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.bg.tertiary,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  memberRowSelected: {
+    borderColor: COLORS.bg.accent,
+    backgroundColor: COLORS.bg.accentSoft,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  memberName: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
+  },
+  favBadge: {
+    color: COLORS.text.accent,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  walletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.bg.success,
+    marginRight: 6,
+  },
+  walletLabel: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.medium,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg.secondary,
+  },
+  checkboxSelected: {
+    backgroundColor: COLORS.bg.accent,
+    borderColor: COLORS.bg.accent,
+  },
+  actions: {
+    marginTop: SPACING.lg,
+    gap: SPACING.sm,
+    alignItems: 'center',
+  },
+  confirmBtn: {
+    width: '100%',
+  },
+  cancelWrap: {
+    paddingVertical: SPACING.sm,
+  },
+  cancelText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.medium,
   },
 });

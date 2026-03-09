@@ -2,7 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { COLORS } from '@/utils/constants';
+import { COLORS, SHADOWS } from '@/utils/constants';
 
 const VISIBLE_TABS = ['home', 'activity', 'wallet', 'profile'];
 
@@ -15,7 +15,7 @@ const TAB_ICONS: Record<string, [string, string]> = {
 
 export function FloatingTabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, 16);
+  const bottomPadding = Math.max(insets.bottom, 16) + 8;
 
   return (
     <View style={[styles.container, { paddingBottom: bottomPadding }]}>
@@ -54,7 +54,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: any) {
                 <Ionicons
                   name={(isFocused ? icons[0] : icons[1]) as any}
                   size={22}
-                  color={isFocused ? COLORS.bg.accent : COLORS.text.tertiary}
+                  color={isFocused ? '#FFFFFF' : '#9CA3AF'}
                 />
               </View>
             </TouchableOpacity>
@@ -72,20 +72,18 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
   },
   bar: {
     flexDirection: 'row',
-    backgroundColor: COLORS.bg.secondary,
-    borderRadius: 32,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 24,
-    elevation: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 36,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(229, 231, 235, 1)',
     width: '100%',
+    ...SHADOWS.float,
   },
   tab: {
     flex: 1,
@@ -94,13 +92,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapActive: {
-    backgroundColor: COLORS.bg.accentSoft,
+    backgroundColor: '#7C3AED',
+    borderRadius: 22,
   },
 });

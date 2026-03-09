@@ -1,11 +1,14 @@
 export const COLORS = {
   bg: {
-    primary: '#F8F7FC',
+    primary: '#F5F3FF',
     secondary: '#FFFFFF',
-    tertiary: '#F3F4F6',
+    tertiary: '#F0EEFF',
     accent: '#7C3AED',
     accentLight: '#8B5CF6',
     accentSoft: '#EDE9FE',
+    gradient1: '#C4B5FD',
+    gradient2: '#FBCFE8',
+    gradient3: '#BFDBFE',
     success: '#10B981',
     danger: '#EF4444',
     warning: '#F59E0B',
@@ -26,9 +29,34 @@ export const COLORS = {
   },
 };
 
+export const SHADOWS = {
+  card: {
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+  },
+  cardHover: {
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+  },
+  float: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+  },
+};
+
 export const GRADIENTS = {
   purple: ['#C4B5FD', '#E9D5FF'] as [string, string],
   purpleSoft: ['#DDD6FE', '#F5F3FF'] as [string, string],
+  /** Main screens: soft purple → pink → blue */
+  screen: ['#E8D5F5', '#F5E6F0', '#DDE8F8'] as readonly [string, string, string],
+  /** Onboarding/splash: richer purple → pink → blue */
+  onboarding: ['#C4B5FD', '#FBCFE8', '#BFDBFE'] as readonly [string, string, string],
 };
 
 export const SPACING = {
@@ -73,6 +101,7 @@ export const SOLANA = {
   DEVNET_RPC: 'https://api.devnet.solana.com',
   MAINNET_RPC: 'https://api.mainnet-beta.solana.com',
   USDC_MINT_MAINNET: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDC_MINT_DEVNET: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
   MEMO_PROGRAM_ID: 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
   EXPLORER_BASE: 'https://explorer.solana.com',
   CLUSTER: 'devnet' as const,

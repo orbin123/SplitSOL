@@ -12,7 +12,29 @@ export interface SplitSolMemberQrPayload {
   wallet: string;
 }
 
-export type SplitSolQrPayload = SplitSolMemberQrPayload;
+export interface SplitSolGroupInviteQrPayload {
+  app: 'splitsol';
+  type: 'group_invite';
+  groupId: string;
+  inviteCode: string;
+  groupName: string;
+}
+
+export type SplitSolQrPayload = SplitSolMemberQrPayload | SplitSolGroupInviteQrPayload;
+
+export const buildGroupInviteQrPayload = (
+  groupId: string,
+  inviteCode: string,
+  groupName: string,
+): string => {
+  return JSON.stringify({
+    app: 'splitsol',
+    type: 'group_invite',
+    groupId,
+    inviteCode,
+    groupName,
+  } satisfies SplitSolGroupInviteQrPayload);
+};
 
 export const isValidWalletAddress = (value: string): boolean => {
   return SOLANA_ADDRESS_REGEX.test(value);
@@ -41,20 +63,24 @@ export const parseSplitSolQrPayload = (
   rawValue: string,
 ): SplitSolQrPayload | null => {
   try {
-    const parsed = JSON.parse(rawValue) as Partial<SplitSolMemberQrPayload & { type: string }>;
-    const name = parsed.name?.trim();
-    const wallet = parsed.wallet?.trim();
+    const parsed = JSON.parse(rawValue) as Record<string, string | undefined>;
+
+    if (parsed.app !== 'splitsol') return null;
+
+    if (parsed.type === 'group_invite') {
+      const groupId = parsed.groupId?.trim();
+      const inviteCode = parsed.inviteCode?.trim();
+      const groupName = parsed.groupName?.trim() ?? '';
+      if (!groupId || !inviteCode) return null;
+      return { app: 'splitsol', type: 'group_invite', groupId, inviteCode, groupName };
+    }
 
     // Accept both 'member' and 'contact' for backward compatibility with existing QR codes
     const isValidType = parsed.type === 'member' || parsed.type === 'contact';
+    const name = parsed.name?.trim();
+    const wallet = parsed.wallet?.trim();
 
-    if (
-      parsed.app !== 'splitsol' ||
-      !isValidType ||
-      !name ||
-      !wallet ||
-      !isValidWalletAddress(wallet)
-    ) {
+    if (!isValidType || !name || !wallet || !isValidWalletAddress(wallet)) {
       return null;
     }
 

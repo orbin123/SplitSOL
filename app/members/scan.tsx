@@ -17,6 +17,11 @@ export default function ScanMemberScreen() {
 
     setIsHandling(true);
 
+    if (payload.type === 'group_invite') {
+      router.replace(`/group/invite/${payload.groupId}` as any);
+      return true;
+    }
+
     if (payload.wallet === user.walletAddress) {
       Alert.alert(
         'This is your QR code',
@@ -60,7 +65,7 @@ export default function ScanMemberScreen() {
     <QRScanner
       onScan={handleScan}
       onClose={() => router.back()}
-      hint="Scan a SplitSOL member QR code"
+      hint="Point camera at a member's QR code"
     />
   );
 }

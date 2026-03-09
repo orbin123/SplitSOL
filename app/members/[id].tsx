@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -22,14 +24,36 @@ import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
 export default function MemberDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const members = useAppStore((s) => s.members);
   const groups = useAppStore((s) => s.groups);
   const transactions = useAppStore((s) => s.transactions);
+  const getBalances = useAppStore((s) => s.getBalances);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const removeMemberFromList = useAppStore((s) => s.removeMemberFromList);
 
   const member = members.find((item) => item.id === id);
+
+  const sharedGroups = useMemo(() => {
+    if (!member) return [];
+
+    return groups
+      .filter((group) => {
+        const hasCurrentUser = group.members.some((m) => m.isCurrentUser);
+        const hasMember = group.members.some((m) => m.memberId === member.id);
+        return hasCurrentUser && hasMember;
+      })
+      .map((group) => {
+        const balances = getBalances(group.id);
+        const groupMember = group.members.find((m) => m.memberId === member.id);
+        const balanceEntry = groupMember
+          ? balances.find((b) => b.memberId === groupMember.id)
+          : null;
+        const amount = balanceEntry?.amount ?? 0;
+        return { group, amount };
+      });
+  }, [member, groups, getBalances]);
 
   const relatedTransactions = useMemo(() => {
     if (!member) return [];
@@ -95,70 +119,84 @@ export default function MemberDetailScreen() {
   };
 
   return (
-    <ScrollView
+    <>
+      {member && (
+        <Stack.Screen options={{ title: member.name }} />
+      )}
+      <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + SPACING.lg + 56, paddingBottom: SPACING.xxxl },
+      ]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <Avatar name={member.name} size={88} />
+      <Card style={styles.profileCard}>
+        <Avatar name={member.name} size={64} />
         <Text style={styles.name}>{member.name}</Text>
+        {member.walletAddress ? (
+          <View style={styles.addressRow}>
+            <Text style={styles.addressText}>
+              {truncateAddress(member.walletAddress, 8)}
+            </Text>
+            <TouchableOpacity
+              onPress={() => void copyAddress()}
+              hitSlop={12}
+              style={styles.copyIcon}
+            >
+              <Ionicons name="copy-outline" size={18} color={COLORS.text.secondary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <Badge
+          label={member.walletAddress ? 'Connected' : 'No Wallet'}
+          variant={member.walletAddress ? 'success' : 'neutral'}
+          size="sm"
+        />
         <TouchableOpacity
-          style={styles.favoritePill}
+          style={styles.favoriteBtn}
           activeOpacity={0.75}
           onPress={() => toggleFavorite(member.id)}
         >
           <Ionicons
             name={member.isFavorite ? 'star' : 'star-outline'}
-            size={18}
-            color={member.isFavorite ? COLORS.bg.warning : COLORS.text.accent}
+            size={24}
+            color={member.isFavorite ? COLORS.bg.warning : COLORS.text.tertiary}
           />
-          <Text style={styles.favoriteText}>
-            {member.isFavorite ? 'Favorite' : 'Mark Favorite'}
-          </Text>
         </TouchableOpacity>
-      </View>
-
-      <Card style={styles.addressCard}>
-        <Text style={styles.sectionLabel}>Wallet address</Text>
-        <Text style={styles.fullAddress}>{member.walletAddress}</Text>
-        <Button
-          title="Copy Address"
-          onPress={() => {
-            void copyAddress();
-          }}
-          variant="secondary"
-          size="sm"
-          style={styles.copyButton}
-        />
       </Card>
 
-      <Card>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Added</Text>
-          <Text style={styles.metaValue}>{timeAgo(member.addedAt)}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Last transaction</Text>
-          <Text style={styles.metaValue}>
-            {member.lastTransactionAt
-              ? timeAgo(member.lastTransactionAt)
-              : 'No transactions yet'}
-          </Text>
-        </View>
-      </Card>
+      <Text style={styles.sectionTitle}>Shared Groups</Text>
+      {sharedGroups.length === 0 ? (
+        <Card style={styles.emptyCard}>
+          <Text style={styles.emptyText}>No shared groups yet</Text>
+        </Card>
+      ) : (
+        sharedGroups.map(({ group, amount }) => (
+          <Card key={group.id} style={styles.groupCard}>
+            <View style={styles.groupRow}>
+              <Text style={styles.groupEmoji}>{group.emoji}</Text>
+              <Text style={styles.groupName}>{group.name}</Text>
+              <Text
+                style={[
+                  styles.balanceAmount,
+                  amount > 0 ? styles.balanceRed : styles.balanceGreen,
+                ]}
+              >
+                {amount > 0
+                  ? `You owe ${formatCurrency(amount)}`
+                  : amount < 0
+                    ? `They owe you ${formatCurrency(Math.abs(amount))}`
+                    : 'Settled'}
+              </Text>
+            </View>
+          </Card>
+        ))
+      )}
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Transaction History</Text>
-        <Text style={styles.sectionCount}>
-          {relatedTransactions.length} item
-          {relatedTransactions.length === 1 ? '' : 's'}
-        </Text>
-      </View>
-
+      <Text style={styles.sectionTitle}>History</Text>
       {relatedTransactions.length === 0 ? (
-        <Card style={styles.emptyHistoryCard}>
+        <Card style={styles.emptyCard}>
           <EmptyState
             emoji="🧾"
             title="No transactions yet"
@@ -173,31 +211,28 @@ export default function MemberDetailScreen() {
 
           return (
             <Card key={tx.id} style={styles.txCard}>
-              <View style={styles.txHeader}>
-                <Text style={styles.txTitle}>
-                  {youPaid ? 'You paid' : `${member.name} paid`}
-                </Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    tx.status === 'confirmed'
-                      ? styles.confirmedBadge
-                      : tx.status === 'failed'
-                        ? styles.failedBadge
-                        : styles.pendingBadge,
-                  ]}
-                >
-                  <Text style={styles.statusText}>{tx.status}</Text>
+              <View style={styles.txRow}>
+                <View style={styles.txCopy}>
+                  <Text style={styles.txDate}>
+                    {new Date(tx.timestamp).toLocaleDateString()}
+                  </Text>
+                  <Text style={styles.txDirection}>
+                    {youPaid ? 'You paid' : `${member.name} paid`} {formatCurrency(tx.amountUSDC)}
+                  </Text>
+                  <Text style={styles.txMeta}>{groupName}</Text>
                 </View>
+                <Badge
+                  label={tx.status}
+                  variant={
+                    tx.status === 'confirmed'
+                      ? 'success'
+                      : tx.status === 'failed'
+                        ? 'danger'
+                        : 'warning'
+                  }
+                  size="sm"
+                />
               </View>
-              <Text style={styles.txAmount}>{formatCurrency(tx.amountUSDC)}</Text>
-              <Text style={styles.txMeta}>
-                {groupName} · {timeAgo(tx.timestamp)}
-              </Text>
-              <Text style={styles.txAddress}>
-                {truncateAddress(tx.payerWallet, 5)} {'->'}{' '}
-                {truncateAddress(tx.receiverWallet, 5)}
-              </Text>
             </Card>
           );
         })
@@ -210,150 +245,119 @@ export default function MemberDetailScreen() {
         style={styles.removeButton}
       />
     </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'transparent',
   },
   content: {
-    padding: SPACING.xl,
+    paddingHorizontal: SPACING.xl,
     gap: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
   },
   missingWrap: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'transparent',
   },
-  header: {
+  profileCard: {
     alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
+    paddingVertical: SPACING.xxl,
+    position: 'relative',
   },
   name: {
     color: COLORS.text.primary,
-    fontSize: FONT.size.xxl,
+    fontSize: 20,
     fontWeight: FONT.weight.bold,
+    marginTop: SPACING.md,
   },
-  favoritePill: {
+  addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.bg.accentSoft,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  favoriteText: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-  },
-  addressCard: {
-    gap: SPACING.sm,
-  },
-  sectionLabel: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  fullAddress: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    lineHeight: 24,
-    fontWeight: FONT.weight.medium,
-  },
-  copyButton: {
-    alignSelf: 'flex-start',
+    gap: SPACING.xs,
     marginTop: SPACING.sm,
   },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metaLabel: {
+  addressText: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
   },
-  metaValue: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
+  copyIcon: {
+    padding: SPACING.xs,
   },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border.default,
-    marginVertical: SPACING.md,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  favoriteBtn: {
+    position: 'absolute',
+    top: SPACING.lg,
+    right: SPACING.lg,
   },
   sectionTitle: {
     color: COLORS.text.primary,
     fontSize: FONT.size.lg,
     fontWeight: FONT.weight.bold,
   },
-  sectionCount: {
-    color: COLORS.text.tertiary,
+  emptyCard: {
+    minHeight: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
   },
-  emptyHistoryCard: {
-    minHeight: 220,
-    justifyContent: 'center',
+  groupCard: {
+    paddingVertical: SPACING.md,
   },
-  txCard: {
-    gap: SPACING.xs,
-  },
-  txHeader: {
+  groupRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     gap: SPACING.md,
   },
-  txTitle: {
+  groupEmoji: {
+    fontSize: 24,
+  },
+  groupName: {
+    flex: 1,
     color: COLORS.text.primary,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.semibold,
   },
-  txAmount: {
-    color: COLORS.bg.accent,
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
+  balanceAmount: {
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+  },
+  balanceRed: {
+    color: COLORS.text.danger,
+  },
+  balanceGreen: {
+    color: COLORS.text.success,
+  },
+  txCard: {
+    paddingVertical: SPACING.md,
+  },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  txCopy: {
+    flex: 1,
+  },
+  txDate: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.xs,
+    marginBottom: 2,
+  },
+  txDirection: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.semibold,
   },
   txMeta: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
-  },
-  txAddress: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-  },
-  statusBadge: {
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-  confirmedBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-  },
-  failedBadge: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-  },
-  pendingBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-  },
-  statusText: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'capitalize',
+    marginTop: 2,
   },
   removeButton: {
     marginTop: SPACING.sm,

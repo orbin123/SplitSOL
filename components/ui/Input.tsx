@@ -23,7 +23,7 @@ export const Input: React.FC<InputProps> = ({
           error ? styles.inputError : undefined,
           style,
         ]}
-        placeholderTextColor={COLORS.text.tertiary}
+        placeholderTextColor="#A78BFA"
         selectionColor={COLORS.bg.accent}
         onFocus={(e) => {
           setFocused(true);
@@ -47,14 +47,14 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   input: {
-    backgroundColor: COLORS.bg.tertiary,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     color: COLORS.text.primary,
     fontSize: FONT.size.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.border.default,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
   },
   inputFocused: {
     borderColor: COLORS.border.focus,

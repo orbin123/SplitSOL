@@ -15,6 +15,7 @@ import {
   getAssociatedTokenAddress,
 } from '@solana/spl-token';
 import { APP, SOLANA } from './constants';
+import { isValidWalletAddress } from './memberQr';
 
 export type SolanaTransaction = Transaction | VersionedTransaction;
 
@@ -31,14 +32,41 @@ export const getConnection = (): Connection => {
 };
 
 export const getSOLBalance = async (address: string): Promise<number> => {
-  const conn = getConnection();
-  const pubkey = new PublicKey(address);
-  const balance = await conn.getBalance(pubkey);
-  return balance / LAMPORTS_PER_SOL;
+  if (!address || !isValidWalletAddress(address)) {
+    throw new Error('Invalid wallet address');
+  }
+  console.log('[solana] getSOLBalance', address, 'rpc:', getRpcEndpoint());
+  try {
+    const conn = getConnection();
+    const pubkey = new PublicKey(address);
+    const balance = await conn.getBalance(pubkey);
+    return balance / LAMPORTS_PER_SOL;
+  } catch (err) {
+    console.error('[solana] getSOLBalance error:', JSON.stringify(err), err);
+    _connection = null; // reset so next call gets a fresh connection
+    throw err;
+  }
+};
+
+export const getSOLBalanceWithRetry = async (
+  address: string,
+  retries = 2,
+): Promise<number> => {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await getSOLBalance(address);
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw new Error('unreachable');
 };
 
 export const getUSDCMint = (): PublicKey =>
-  new PublicKey(SOLANA.USDC_MINT_MAINNET);
+  new PublicKey(
+    SOLANA.CLUSTER === 'devnet' ? SOLANA.USDC_MINT_DEVNET : SOLANA.USDC_MINT_MAINNET,
+  );
 
 export const getUSDCAssociatedTokenAddress = async (
   owner: string | PublicKey,
@@ -65,7 +93,10 @@ export const getTokenBalance = async (
 };
 
 export const getUSDCBalance = async (owner: string): Promise<number> =>
-  getTokenBalance(owner, SOLANA.USDC_MINT_MAINNET);
+  getTokenBalance(
+    owner,
+    SOLANA.CLUSTER === 'devnet' ? SOLANA.USDC_MINT_DEVNET : SOLANA.USDC_MINT_MAINNET,
+  );
 
 export const buildSOLTransfer = async (
   from: string,

@@ -13,14 +13,14 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/formatters';
-import { COLORS, GRADIENTS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 
 export default function AddSplit() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -37,6 +37,7 @@ export default function AddSplit() {
   const [splitAmong, setSplitAmong] = useState<string[]>(
     group?.members.map((m) => m.id) ?? [],
   );
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const parsedAmount = parseFloat(amount) || 0;
   const splitAmount = useMemo(() => {
@@ -70,14 +71,17 @@ export default function AddSplit() {
     return null;
   };
 
+
   const handleAdd = () => {
     const error = validateSplit();
     if (error) {
+      setValidationError(error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Missing Info', error);
       return;
     }
 
+    setValidationError(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     addExpense(id, {
       description: description.trim(),
@@ -93,175 +97,172 @@ export default function AddSplit() {
   const isValid =
     description.trim() && parsedAmount > 0 && paidBy && splitAmong.length > 0;
 
+  const hasError = !!validationError;
+
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <LinearGradient
-          colors={GRADIENTS.purple}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.amountCard}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.7}
         >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={24}
-              color={COLORS.text.primary}
-            />
-          </TouchableOpacity>
+          <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Add Split</Text>
+        <View style={styles.headerSpacer} />
+      </View>
 
-          <Text style={styles.amountLabel}>AMOUNT</Text>
-          <View style={styles.amountInputRow}>
-            <TextInput
-              style={styles.amountInput}
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              placeholderTextColor={COLORS.text.tertiary}
-              autoFocus
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Card style={styles.formCard}>
+            <Input
+              placeholder="What's this for?"
+              value={description}
+              onChangeText={(t) => {
+                setDescription(t);
+                setValidationError(null);
+              }}
+              maxLength={100}
+              error={
+                hasError && !description.trim() && validationError
+                  ? validationError
+                  : undefined
+              }
             />
-          </View>
-          <View style={styles.currencyBadge}>
-            <Text style={styles.currencyText}>USDC</Text>
-            <Ionicons
-              name="chevron-down"
-              size={14}
-              color={COLORS.text.secondary}
-            />
-          </View>
-        </LinearGradient>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>DESCRIPTION</Text>
-          <Input
-            placeholder="e.g. Dinner, Uber, Groceries"
-            value={description}
-            onChangeText={setDescription}
-            maxLength={100}
+            <View
+              style={[
+                styles.amountRow,
+                hasError && (!amount || parsedAmount <= 0 || parsedAmount > 1000000) && styles.inputError,
+              ]}
+            >
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={(t) => {
+                  setAmount(t);
+                  setValidationError(null);
+                }}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={COLORS.text.tertiary}
+                autoFocus
+              />
+              <View style={styles.usdcBadge}>
+                <Text style={styles.usdcText}>USDC</Text>
+              </View>
+            </View>
+            {hasError && (!amount || parsedAmount <= 0 || parsedAmount > 1000000) && validationError && (
+              <Text style={styles.errorText}>{validationError}</Text>
+            )}
+
+            <View style={styles.divider} />
+
+            <Text style={styles.sectionLabel}>Paid by</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.memberScroll}
+            >
+              {group.members.map((member) => {
+                const isActive = paidBy === member.id;
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[
+                      styles.memberChip,
+                      isActive && styles.memberChipActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setPaidBy(member.id);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Avatar name={member.name} size={32} />
+                    <Text
+                      style={[
+                        styles.memberChipText,
+                        isActive && styles.memberChipTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {member.isCurrentUser ? 'You' : member.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.sectionLabel}>Split among</Text>
+            <Text style={styles.equalSplitLabel}>Equal Split</Text>
+            <View style={styles.splitList}>
+              {group.members.map((member) => {
+                const selected = splitAmong.includes(member.id);
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={styles.splitRow}
+                    onPress={() => toggleSplit(member.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Avatar name={member.name} size={32} />
+                    <Text style={styles.splitName} numberOfLines={1}>
+                      {member.isCurrentUser ? 'You' : member.name}
+                    </Text>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        selected && styles.checkboxActive,
+                      ]}
+                    >
+                      {selected && (
+                        <Ionicons name="checkmark" size={14} color={COLORS.text.white} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {parsedAmount > 0 && splitAmong.length > 0 && (
+              <View style={styles.perPersonPill}>
+                <Text style={styles.perPersonText}>
+                  Each person pays: {formatCurrency(splitAmount)}
+                </Text>
+              </View>
+            )}
+          </Card>
+        </ScrollView>
+
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom || SPACING.lg }]}>
+          <Button
+            title="Add Split"
+            onPress={handleAdd}
+            disabled={!isValid}
+            size="lg"
+            style={styles.addBtn}
           />
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>PAID BY</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.memberScroll}
-          >
-            {group.members.map((member) => {
-              const isActive = paidBy === member.id;
-              return (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    styles.memberChip,
-                    isActive && styles.memberChipActive,
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setPaidBy(member.id);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Avatar name={member.name} size={28} />
-                  <Text
-                    style={[
-                      styles.memberChipText,
-                      isActive && styles.memberChipTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {member.isCurrentUser ? 'You' : member.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>SPLIT AMONG</Text>
-          <View style={styles.splitList}>
-            {group.members.map((member) => {
-              const selected = splitAmong.includes(member.id);
-              return (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    styles.splitRow,
-                    selected && styles.splitRowActive,
-                  ]}
-                  onPress={() => toggleSplit(member.id)}
-                  activeOpacity={0.7}
-                >
-                  <Avatar name={member.name} size={32} />
-                  <Text
-                    style={[
-                      styles.splitName,
-                      selected && styles.splitNameActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {member.isCurrentUser ? 'You' : member.name}
-                  </Text>
-                  <Text style={styles.splitAmount}>
-                    {selected && parsedAmount > 0
-                      ? formatCurrency(splitAmount)
-                      : ''}
-                  </Text>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      selected && styles.checkboxActive,
-                    ]}
-                  >
-                    {selected && (
-                      <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color={COLORS.text.white}
-                      />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      </ScrollView>
-
-      <View
-        style={[styles.bottomBar, { paddingBottom: insets.bottom || SPACING.lg }]}
-      >
-        <Button
-          title="Add Split →"
-          variant="dark"
-          size="lg"
-          onPress={handleAdd}
-          disabled={!isValid}
-          style={styles.addBtn}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'transparent',
   },
   notFound: {
     color: COLORS.text.secondary,
@@ -269,71 +270,88 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 100,
   },
-  scrollContent: {
-    paddingBottom: SPACING.xxl,
-  },
-  amountCard: {
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-    paddingHorizontal: SPACING.xxl,
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderBottomLeftRadius: RADIUS.xxl,
-    borderBottomRightRadius: RADIUS.xxl,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
   backBtn: {
-    alignSelf: 'flex-start',
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING.md,
   },
-  amountLabel: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    letterSpacing: 1,
-    marginBottom: SPACING.sm,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  amountInput: {
+  headerTitle: {
+    flex: 1,
     color: COLORS.text.primary,
-    fontSize: 36,
-    fontWeight: FONT.weight.extrabold,
-    minWidth: 60,
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
     textAlign: 'center',
   },
-  currencyBadge: {
+  headerSpacer: {
+    width: 36,
+  },
+  keyboardWrap: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SPACING.xl,
+    paddingBottom: SPACING.xxl,
+  },
+  formCard: {
+    padding: SPACING.xxl,
+    gap: SPACING.lg,
+  },
+  amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  amountInput: {
+    flex: 1,
+    color: COLORS.text.primary,
+    fontSize: 28,
+    fontWeight: FONT.weight.bold,
+    padding: 0,
+  },
+  inputError: {
+    borderColor: COLORS.bg.danger,
+  },
+  usdcBadge: {
+    backgroundColor: '#F3F4F6',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    gap: SPACING.xs,
-    marginTop: SPACING.md,
   },
-  currencyText: {
+  usdcText: {
     color: COLORS.text.secondary,
     fontSize: FONT.size.sm,
     fontWeight: FONT.weight.medium,
   },
-  section: {
-    paddingHorizontal: SPACING.xxl,
-    marginTop: SPACING.xxl,
-    gap: SPACING.md,
+  errorText: {
+    color: COLORS.text.danger,
+    fontSize: FONT.size.xs,
+    marginTop: SPACING.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginVertical: SPACING.sm,
   },
   sectionLabel: {
     color: COLORS.text.secondary,
-    fontSize: FONT.size.xs,
+    fontSize: FONT.size.sm,
     fontWeight: FONT.weight.semibold,
-    letterSpacing: 1,
   },
   memberScroll: {
+    flexDirection: 'row',
     gap: SPACING.sm,
   },
   memberChip: {
@@ -343,13 +361,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.bg.secondary,
-    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
     borderColor: COLORS.border.default,
   },
   memberChipActive: {
+    backgroundColor: COLORS.bg.accent,
     borderColor: COLORS.bg.accent,
-    backgroundColor: COLORS.bg.accentSoft,
   },
   memberChipText: {
     color: COLORS.text.secondary,
@@ -358,7 +376,12 @@ const styles = StyleSheet.create({
     maxWidth: 80,
   },
   memberChipTextActive: {
-    color: COLORS.text.primary,
+    color: COLORS.text.white,
+  },
+  equalSplitLabel: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    marginBottom: SPACING.sm,
   },
   splitList: {
     gap: SPACING.sm,
@@ -367,32 +390,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.bg.secondary,
-    borderWidth: 1.5,
-    borderColor: COLORS.border.default,
-  },
-  splitRowActive: {
-    borderColor: COLORS.bg.success,
-    backgroundColor: 'rgba(16, 185, 129, 0.04)',
   },
   splitName: {
-    color: COLORS.text.secondary,
+    flex: 1,
+    color: COLORS.text.primary,
     fontSize: FONT.size.md,
     fontWeight: FONT.weight.medium,
-    flex: 1,
-  },
-  splitNameActive: {
-    color: COLORS.text.primary,
-  },
-  splitAmount: {
-    color: COLORS.text.success,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
-    minWidth: 60,
-    textAlign: 'right',
   },
   checkbox: {
     width: 24,
@@ -404,18 +407,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxActive: {
-    backgroundColor: COLORS.bg.success,
-    borderColor: COLORS.bg.success,
+    backgroundColor: COLORS.bg.accent,
+    borderColor: COLORS.bg.accent,
+  },
+  perPersonPill: {
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
+    marginTop: SPACING.sm,
+  },
+  perPersonText: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.medium,
   },
   bottomBar: {
-    paddingHorizontal: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
-    backgroundColor: COLORS.bg.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderTopWidth: 1,
     borderTopColor: COLORS.border.default,
   },
   addBtn: {
     width: '100%',
-    borderRadius: RADIUS.lg,
   },
 });

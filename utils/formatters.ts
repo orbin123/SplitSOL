@@ -30,12 +30,12 @@ export const timeAgo = (dateString: string): string => {
   return new Date(dateString).toLocaleDateString();
 };
 
-// Generate a deterministic color from a string (for avatars)
+// Generate a deterministic color from a string (for avatars) - pastel purple/pink/blue family
 export const stringToColor = (str: string): string => {
   const colors = [
-    '#7C3AED', '#EC4899', '#F59E0B', '#10B981',
-    '#3B82F6', '#EF4444', '#8B5CF6', '#14B8A6',
-    '#F97316', '#06B6D4', '#84CC16', '#E11D48',
+    '#C4B5FD', '#E9D5FF', '#FBCFE8', '#BFDBFE',
+    '#DDD6FE', '#FCE7F3', '#A5B4FC', '#F9A8D4',
+    '#93C5FD', '#F472B6', '#A78BFA', '#67E8F9',
   ];
   let hash = 0;
   for (let i = 0; i < str.length; i++) {

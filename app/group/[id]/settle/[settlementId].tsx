@@ -1,45 +1,29 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
+  Animated,
+  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
-import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { useAppStore } from '@/store/useAppStore';
-import {
-  getRpcErrorCopy,
-  getSettlementExecutionErrorCopy,
-  getSettlementPreparationErrorCopy,
-} from '@/utils/errorMessages';
-import { AutoPayResult, buildAutoPayTransaction, getAutoPayPreviewLabel } from '@/utils/autopay';
-import { COLORS, FONT, RADIUS, SOLANA, SPACING } from '@/utils/constants';
+import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { buildMemo, formatCurrency, truncateAddress } from '@/utils/formatters';
-import { executeSettlement } from '@/utils/mwa';
-import { addMemoToTransaction, getExplorerUrl, getRpcEndpoint } from '@/utils/solana';
+import { MOCK_USDC_BALANCE, MOCK_SOL_BALANCE } from '@/utils/seedMockData';
 
-type SettleStatus = 'idle' | 'preparing' | 'ready' | 'confirming' | 'failed';
+type PaymentMethod = 'direct_usdc' | 'autopay';
 
-const PREPARED_PAYMENT_MAX_AGE_MS = 30_000;
-
-const formatInputAmount = (amount: number): string => {
-  if (amount >= 100) return amount.toFixed(2);
-  if (amount >= 1) return amount.toFixed(4);
-  return amount.toFixed(6);
-};
-
-const getPaymentMethodLabel = (payment: AutoPayResult): string => {
-  if (payment.method === 'direct_usdc') return 'Direct USDC';
-  if (payment.isDevnetFallback) return 'Devnet SOL equivalent';
-  return 'Jupiter swap';
-};
+const SLIDER_WIDTH = 300;
+const THUMB_SIZE = 56;
+const SLIDE_THRESHOLD = SLIDER_WIDTH - THUMB_SIZE - 10;
 
 export default function Settlement() {
   const { id, settlementId } = useLocalSearchParams<{
@@ -47,24 +31,18 @@ export default function Settlement() {
     settlementId: string;
   }>();
   const router = useRouter();
-  const [status, setStatus] = useState<SettleStatus>('idle');
-  const [preparedPayment, setPreparedPayment] = useState<AutoPayResult | null>(null);
-  const [preparedAt, setPreparedAt] = useState<number | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('direct_usdc');
   const [isOffline, setIsOffline] = useState(false);
-  const [failureCopy, setFailureCopy] = useState<{
-    title: string;
-    message: string;
-  } | null>(null);
+  const [noWallet, setNoWallet] = useState(false);
+  const [isSliding, setIsSliding] = useState(false);
 
   const group = useAppStore((s) => s.getGroup(id));
   const walletAddress = useAppStore((s) => s.user.walletAddress);
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const addSettlement = useAppStore((s) => s.addSettlement);
   const addTransaction = useAppStore((s) => s.addTransaction);
-  const addNotification = useAppStore((s) => s.addNotification);
-  const updateMemberLastTransaction = useAppStore(
-    (s) => s.updateMemberLastTransaction,
-  );
 
   const [fromId, toId] = settlementId?.split('_') ?? [];
   const debts = useMemo(() => getSimplifiedDebts(id), [getSimplifiedDebts, id]);
@@ -76,484 +54,378 @@ export default function Settlement() {
   const currentUser = debt?.from;
   const recipient = debt?.to;
   const recipientWallet = recipient?.walletAddress;
-  const isCurrentUserDebtor = Boolean(currentUser?.isCurrentUser);
-  const networkLabel = SOLANA.CLUSTER === 'devnet' ? 'Solana Devnet' : 'Solana Mainnet';
 
+  // Mock balances
+  const usdcBalance = MOCK_USDC_BALANCE;
+  const solBalance = MOCK_SOL_BALANCE;
+
+  // Slide-to-pay animation
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const chevronAnim = useRef(new Animated.Value(0)).current;
+
+  // Chevron pulse animation
   useEffect(() => {
-    const checkConnectivity = async () => {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-
-        await fetch(getRpcEndpoint(), {
-          method: 'HEAD',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-        setIsOffline(false);
-      } catch {
-        setIsOffline(true);
-      }
-    };
-
-    checkConnectivity();
-  }, [status]);
-
-  useEffect(() => {
-    setPreparedPayment(null);
-    setPreparedAt(null);
-    setStatus('idle');
-    setFailureCopy(null);
-  }, [debt?.amount, debt?.from.id, debt?.to.id, recipientWallet, walletAddress]);
-
-  const buildPayment = useCallback(async () => {
-    if (!walletAddress || !recipientWallet || !debt) {
-      throw new Error('Missing payment data.');
-    }
-
-    return buildAutoPayTransaction(walletAddress, recipientWallet, debt.amount);
-  }, [walletAddress, recipientWallet, debt]);
-
-  const preparePayment = useCallback(async () => {
-    const payment = await buildPayment();
-    setPreparedPayment(payment);
-    setPreparedAt(Date.now());
-    return payment;
-  }, [buildPayment]);
-
-  const getFreshPreparedPayment = useCallback(async () => {
-    const isFresh =
-      preparedPayment &&
-      preparedAt &&
-      Date.now() - preparedAt < PREPARED_PAYMENT_MAX_AGE_MS;
-
-    if (isFresh) {
-      return preparedPayment;
-    }
-
-    return preparePayment();
-  }, [preparedAt, preparedPayment, preparePayment]);
-
-  const handlePreparePayment = useCallback(async () => {
-    if (!walletAddress || !recipientWallet || !debt || !isCurrentUserDebtor) return;
-
-    setFailureCopy(null);
-    setStatus('preparing');
-
-    try {
-      await preparePayment();
-      setStatus('ready');
-    } catch (error: any) {
-      setPreparedPayment(null);
-      setPreparedAt(null);
-      setStatus('failed');
-      setFailureCopy(getSettlementPreparationErrorCopy(error));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-  }, [walletAddress, recipientWallet, debt, isCurrentUserDebtor, preparePayment]);
-
-  const handleConfirmPayment = useCallback(async () => {
-    if (
-      !walletAddress ||
-      !recipientWallet ||
-      !debt ||
-      !group ||
-      !currentUser ||
-      !recipient ||
-      !isCurrentUserDebtor
-    ) {
-      return;
-    }
-
-    setFailureCopy(null);
-    setStatus('confirming');
-
-    try {
-      const payment = await getFreshPreparedPayment();
-      const memoText = buildMemo(
-        group.name,
-        currentUser.name,
-        recipient.name,
-        debt.amount,
-      );
-      const transaction = await addMemoToTransaction(payment.transaction, memoText);
-      const { signature, confirmed } = await executeSettlement(transaction);
-
-      if (!confirmed) {
-        setStatus('failed');
-        setFailureCopy({
-          title: 'Confirmation Incomplete',
-          message: 'The payment was submitted, but confirmation did not complete. Please try again.',
-        });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        return;
-      }
-
-      const settledAt = new Date().toISOString();
-
-      addSettlement({
-        groupId: group.id,
-        from: currentUser.id,
-        to: recipient.id,
-        amount: debt.amount,
-        status: 'confirmed',
-        txSignature: signature,
-        memo: memoText,
-        settledAt,
-        explorerUrl: getExplorerUrl(signature),
-      });
-
-      addTransaction({
-        groupId: group.id,
-        payerWallet: walletAddress,
-        receiverWallet: recipientWallet,
-        amountUSDC: debt.amount,
-        status: 'confirmed',
-        signature,
-        timestamp: settledAt,
-        swap:
-          payment.method === 'swap'
-            ? {
-                inputToken: payment.inputToken,
-                inputAmount: Number(payment.inputAmount.toFixed(6)),
-                outputUSDC: payment.outputUSDC,
-                route: payment.route,
-                slippage: payment.slippage,
-                fee: 0,
-              }
-            : null,
-        chain: {
-          networkFee: 0,
-          confirmationStatus: 'confirmed',
-          blockTime: null,
-        },
-      });
-
-      if (recipient.memberId) {
-        updateMemberLastTransaction(recipient.memberId);
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace(`/tx/${signature}?groupId=${group.id}`);
-    } catch (error) {
-      setStatus('failed');
-      setFailureCopy(getSettlementExecutionErrorCopy(error));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-  }, [
-    walletAddress,
-    recipientWallet,
-    debt,
-    group,
-    currentUser,
-    recipient,
-    isCurrentUserDebtor,
-    getFreshPreparedPayment,
-    addSettlement,
-    addTransaction,
-    updateMemberLastTransaction,
-    router,
-  ]);
-
-  const handleSendReminder = useCallback(() => {
-    if (!group || !currentUser || !recipient) return;
-
-    addNotification({
-      type: 'reminder',
-      relatedGroupId: group.id,
-      relatedPaymentId: null,
-      message: `Reminder: ${currentUser.name} owes ${formatCurrency(debt.amount)} to ${recipient.name} in ${group.name}.`,
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Reminder Sent', 'A local reminder has been added to notifications.');
-  }, [addNotification, currentUser, debt?.amount, group, recipient]);
-
-  if (!group) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={styles.errorEmoji}>😵</Text>
-          <Text style={styles.errorTitle}>Group not found</Text>
-          <Button
-            title="Go Back"
-            variant="secondary"
-            onPress={() => router.back()}
-            style={{ marginTop: SPACING.xl }}
-          />
-        </View>
-      </View>
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(chevronAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(chevronAnim, {
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ]),
     );
-  }
+    loop.start();
+    return () => loop.stop();
+  }, [chevronAnim]);
 
-  if (!debt || !currentUser || !recipient) {
+  const handlePaymentComplete = useCallback(() => {
+    if (!group || !currentUser || !recipient || !debt) return;
+
+    const memo = buildMemo(group.name, currentUser.name, recipient.name, debt.amount);
+    const mockSignature = `mock_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const settledAt = new Date().toISOString();
+
+    addSettlement({
+      groupId: group.id,
+      from: currentUser.id,
+      to: recipient.id,
+      amount: debt.amount,
+      status: 'confirmed',
+      txSignature: mockSignature,
+      memo,
+      settledAt,
+    });
+
+    addTransaction({
+      groupId: group.id,
+      payerWallet: walletAddress || 'DEMO111111111111111111111111111111111111111',
+      receiverWallet: recipientWallet || '',
+      amountUSDC: debt.amount,
+      status: 'confirmed',
+      signature: mockSignature,
+      timestamp: settledAt,
+      swap:
+        paymentMethod === 'autopay'
+          ? {
+            inputToken: 'SOL',
+            inputAmount: Number((debt.amount * SOLANA.DEVNET_USDC_TO_SOL).toFixed(6)),
+            outputUSDC: debt.amount,
+            route: 'Jupiter (Mock)',
+            slippage: 0.5,
+            fee: 0,
+          }
+          : null,
+      chain: {
+        networkFee: 0.000005,
+        confirmationStatus: 'confirmed',
+        blockTime: Math.floor(Date.now() / 1000),
+      },
+    });
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    router.replace(
+      `/settle/success?txId=${mockSignature}&groupId=${group.id}&amount=${debt.amount}&from=${currentUser.name}&to=${recipient.name}&groupName=${group.name}&groupEmoji=${group.emoji}&method=${paymentMethod}&recipientWallet=${recipientWallet || ''}` as any,
+    );
+  }, [group, currentUser, recipient, debt, walletAddress, recipientWallet, paymentMethod, addSettlement, addTransaction, router]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          setIsSliding(true);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const value = Math.max(0, Math.min(gestureState.dx, SLIDE_THRESHOLD));
+          slideAnim.setValue(value);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          setIsSliding(false);
+          if (gestureState.dx >= SLIDE_THRESHOLD) {
+            Animated.timing(slideAnim, {
+              toValue: SLIDE_THRESHOLD,
+              duration: 100,
+              useNativeDriver: true,
+            }).start(() => {
+              handlePaymentComplete();
+            });
+          } else {
+            Animated.spring(slideAnim, {
+              toValue: 0,
+              friction: 5,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+      }),
+    [slideAnim, handlePaymentComplete],
+  );
+
+  if (!group || !debt || !currentUser || !recipient) {
     return (
-      <View style={styles.container}>
-        <View style={styles.centered}>
+      <LinearGradient
+        colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
+        style={styles.container}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={[styles.centered, { paddingTop: insets.top }]}>
           <Text style={styles.errorEmoji}>✅</Text>
           <Text style={styles.errorTitle}>No debt found</Text>
           <Text style={styles.errorSub}>
             This settlement may already be resolved.
           </Text>
-          <Button
-            title="Back to Group"
-            variant="secondary"
+          <TouchableOpacity
+            style={styles.goBackBtn}
             onPress={() => router.back()}
-            style={{ marginTop: SPACING.xl }}
-          />
+            activeOpacity={0.7}
+          >
+            <Text style={styles.goBackBtnText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
     );
   }
 
-  const isProcessing = status === 'preparing' || status === 'confirming';
-  const canPrepare =
-    !!walletAddress &&
-    !!recipientWallet &&
-    !isOffline &&
-    !isProcessing &&
-    isCurrentUserDebtor;
-  const canConfirm = canPrepare && !!preparedPayment;
-  const primaryAction = preparedPayment ? handleConfirmPayment : handlePreparePayment;
-
-  const buttonTitle = isOffline
-    ? 'No Connection'
-    : status === 'preparing'
-      ? 'Preparing Payment...'
-      : status === 'confirming'
-        ? 'Confirming on Solana...'
-        : !isCurrentUserDebtor
-          ? 'Only Debtor Can Pay'
-          : !walletAddress
-            ? 'Connect Wallet Above'
-            : !recipientWallet
-              ? 'Recipient Wallet Needed'
-              : preparedPayment
-                ? 'Confirm Payment'
-                : 'Prepare Payment';
+  const memoText = buildMemo(group.name, currentUser.name, recipient.name, debt.amount);
 
   return (
-    <View style={styles.container}>
+    <LinearGradient
+      colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + SPACING.lg },
+        ]}
+        showsVerticalScrollIndicator={true}
       >
-        <View style={styles.summarySection}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Settle Up</Text>
+        </View>
+
+        {/* Transfer Summary Card */}
+        <View style={styles.summaryCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrap}>
-              <Avatar name={currentUser.name} size={56} />
-              <Text style={styles.avatarLabel} numberOfLines={1}>
-                {currentUser.isCurrentUser ? 'You' : currentUser.name}
+              <Avatar name={currentUser.name} size={60} color="#C4B5FD" />
+              <Text style={styles.avatarLabel}>
+                {currentUser.isCurrentUser ? currentUser.name : currentUser.name}
               </Text>
             </View>
-
-            <View style={styles.arrowContainer}>
-              <View style={styles.arrowLine} />
-              <Text style={styles.arrowHead}>›</Text>
+            <View style={styles.arrowWrap}>
+              <Ionicons name="arrow-forward" size={22} color="#9CA3AF" />
             </View>
-
             <View style={styles.avatarWrap}>
-              <Avatar name={recipient.name} size={56} />
-              <Text style={styles.avatarLabel} numberOfLines={1}>
-                {recipient.name}
+              <Avatar name={recipient.name} size={60} color="#FBCFE8" />
+              <Text style={styles.avatarLabel}>{recipient.name}</Text>
+            </View>
+          </View>
+          <View style={styles.amountRow}>
+            <Text style={styles.amountValue}>{debt.amount.toFixed(2)}</Text>
+            <Text style={styles.amountCurrency}>USDC</Text>
+          </View>
+          <Text style={styles.fromGroup}>
+            from {group.emoji} {group.name}
+          </Text>
+        </View>
+
+        {/* Payment Method */}
+        <View style={styles.paymentMethodHeader}>
+          <Text style={styles.paymentMethodTitle}>Payment Method</Text>
+          <View style={styles.devnetBadge}>
+            <Text style={styles.devnetText}>Devnet</Text>
+          </View>
+        </View>
+
+        {/* Direct USDC Option */}
+        <TouchableOpacity
+          style={[
+            styles.paymentOption,
+            paymentMethod === 'direct_usdc' && styles.paymentOptionSelected,
+          ]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPaymentMethod('direct_usdc');
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.paymentOptionLeft}>
+            <View style={styles.paymentIconCircle}>
+              <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+            </View>
+            <View>
+              <Text style={styles.paymentOptionTitle}>Direct USDC Transfer</Text>
+              <Text style={styles.paymentOptionBalance}>
+                Balance: {usdcBalance.toFixed(2)} USDC
               </Text>
             </View>
           </View>
+          <View
+            style={[
+              styles.radioOuter,
+              paymentMethod === 'direct_usdc' && styles.radioOuterSelected,
+            ]}
+          >
+            {paymentMethod === 'direct_usdc' && (
+              <View style={styles.radioInner} />
+            )}
+          </View>
+        </TouchableOpacity>
 
-          <Text style={styles.summaryLabel}>Pay</Text>
-          <Text style={styles.summaryAmount}>{formatCurrency(debt.amount)}</Text>
-          <Text style={styles.summaryRecipient}>to {recipient.name}</Text>
-          <Text style={styles.summaryMethod}>
-            {preparedPayment
-              ? getAutoPayPreviewLabel(preparedPayment)
-              : 'Prepare payment to choose the best available route.'}
-          </Text>
-          {preparedPayment?.isDevnetFallback && (
-            <Text style={styles.summaryNote}>
-              Devnet mode: settling with SOL equivalent.
+        {/* AutoPay Option */}
+        <TouchableOpacity
+          style={[
+            styles.paymentOption,
+            paymentMethod === 'autopay' && styles.paymentOptionSelected,
+          ]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPaymentMethod('autopay');
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.paymentOptionLeft}>
+            <View style={styles.paymentIconCircleGray}>
+              <Ionicons name="swap-horizontal" size={24} color="#6B7280" />
+            </View>
+            <View>
+              <Text style={styles.paymentOptionTitle}>AutoPay: Swap SOL →{'\n'}USDC</Text>
+              <Text style={styles.paymentOptionBalance}>
+                Balance: {solBalance.toFixed(2)} SOL
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.radioOuter,
+              paymentMethod === 'autopay' && styles.radioOuterSelected,
+            ]}
+          >
+            {paymentMethod === 'autopay' && <View style={styles.radioInner} />}
+          </View>
+        </TouchableOpacity>
+
+        {/* Transaction Details */}
+        <View style={styles.txDetailsCard}>
+          <View style={styles.txDetailsHeader}>
+            <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+            <Text style={styles.txDetailsTitle}>Transaction Details</Text>
+          </View>
+
+          <View style={styles.txDetailRow}>
+            <Text style={styles.txDetailLabel}>Memo</Text>
+            <Text style={styles.txDetailValue} numberOfLines={2}>
+              SplitSOL | {group.name}{'\n'}
+              {currentUser.name} → {recipient.name} | {debt.amount.toFixed(2)} USDC
             </Text>
-          )}
+          </View>
+
+          <View style={styles.txDetailRow}>
+            <Text style={styles.txDetailLabel}>Network fee</Text>
+            <Text style={styles.txDetailValue}>~0.000005 SOL</Text>
+          </View>
+
+          <View style={styles.txDetailRow}>
+            <Text style={styles.txDetailLabel}>Recipient wallet</Text>
+            <Text style={styles.txDetailValue}>
+              {recipientWallet
+                ? truncateAddress(recipientWallet, 4)
+                : 'Not set'}
+            </Text>
+          </View>
         </View>
 
-        <Card style={styles.detailsCard}>
-          <DetailRow label="Group" value={`${group.emoji} ${group.name}`} />
-          <View style={styles.divider} />
-          <DetailRow label="Amount (USDC)" value={formatCurrency(debt.amount)} />
-          <View style={styles.divider} />
-          <DetailRow label="Network" value={networkLabel} />
-          {recipientWallet && (
-            <>
-              <View style={styles.divider} />
-              <DetailRow
-                label="Recipient Wallet"
-                value={truncateAddress(recipientWallet, 6)}
-              />
-            </>
-          )}
-          {preparedPayment && (
-            <>
-              <View style={styles.divider} />
-              <DetailRow
-                label="Payment Method"
-                value={getPaymentMethodLabel(preparedPayment)}
-              />
-              <View style={styles.divider} />
-              <DetailRow
-                label="Input Asset"
-                value={`${formatInputAmount(preparedPayment.inputAmount)} ${preparedPayment.inputToken}`}
-              />
-              <View style={styles.divider} />
-              <DetailRow label="Route" value={preparedPayment.route} />
-              {preparedPayment.method === 'swap' &&
-                !preparedPayment.isDevnetFallback && (
-                  <>
-                    <View style={styles.divider} />
-                    <DetailRow
-                      label="Slippage"
-                      value={`${preparedPayment.slippage.toFixed(2)}%`}
-                    />
-                  </>
-                )}
-            </>
-          )}
-        </Card>
-
-        {!walletAddress && (
-          <Card style={styles.promptCard}>
-            <Text style={styles.promptIcon}>🔗</Text>
-            <Text style={styles.promptTitle}>Connect your wallet</Text>
-            <Text style={styles.promptSub}>
-              You need a Solana wallet to settle on-chain.
+        {/* Dev Toggle Buttons */}
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            style={[
+              styles.toggleBtn,
+              isOffline && styles.toggleBtnActive,
+            ]}
+            onPress={() => setIsOffline((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.toggleBtnText, isOffline && styles.toggleBtnTextActive]}>
+              Toggle Offline
             </Text>
-            <View style={styles.promptAction}>
-              <ConnectButton />
-            </View>
-          </Card>
-        )}
-
-        {walletAddress && !recipientWallet && (
-          <Card style={styles.promptCard}>
-            <Text style={styles.promptIcon}>⚠️</Text>
-            <Text style={styles.promptTitle}>Wallet address needed</Text>
-            <Text style={styles.promptSub}>
-              {recipient.name} hasn&apos;t added their Solana wallet address yet.
-              Ask them to join the group or add their address manually.
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.toggleBtn,
+              noWallet && styles.toggleBtnActive,
+            ]}
+            onPress={() => setNoWallet((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.toggleBtnText, noWallet && styles.toggleBtnTextActive]}>
+              Toggle No Wallet
             </Text>
-          </Card>
-        )}
+          </TouchableOpacity>
+        </View>
 
-        {!isCurrentUserDebtor && (
-          <Card style={styles.promptCard}>
-            <Text style={styles.promptIcon}>🧾</Text>
-            <Text style={styles.promptTitle}>Only the debtor can settle</Text>
-            <Text style={styles.promptSub}>
-              This debt belongs to {currentUser.name}. Open a debt where you are
-              the payer to continue.
-            </Text>
-            <View style={styles.promptAction}>
-              <Button
-                title="Send Reminder"
-                onPress={handleSendReminder}
-                variant="secondary"
-              />
-            </View>
-          </Card>
-        )}
-
-        {isOffline && (
-          <Card style={styles.promptCard}>
-            <Text style={styles.promptIcon}>📡</Text>
-            <Text style={styles.promptTitle}>You&apos;re offline</Text>
-            <Text style={styles.promptSub}>
-              A network connection is required to prepare and confirm this
-              settlement.
-            </Text>
-            <View style={styles.promptAction}>
-              <Button
-                title="Try Again"
-                variant="secondary"
-                onPress={async () => {
-                  try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 5000);
-                    await fetch(getRpcEndpoint(), {
-                      method: 'HEAD',
-                      signal: controller.signal,
-                    });
-                    clearTimeout(timeout);
-                    setIsOffline(false);
-                  } catch (error) {
-                    Alert.alert(
-                      getRpcErrorCopy(error).title,
-                      getRpcErrorCopy(error).message,
-                    );
-                  }
-                }}
-              />
-            </View>
-          </Card>
-        )}
-
-        {status === 'failed' && failureCopy && (
-          <Card style={styles.failedCard}>
-            <Text style={styles.failedIcon}>✗</Text>
-            <Text style={styles.failedTitle}>{failureCopy.title}</Text>
-            <Text style={styles.failedSub}>{failureCopy.message}</Text>
-            <Button
-              title="Try Again"
-              onPress={() => {
-                if (preparedPayment) {
-                  void handleConfirmPayment();
-                  return;
-                }
-
-                void handlePreparePayment();
-              }}
-              variant="secondary"
-              style={styles.failedButton}
-            />
-          </Card>
-        )}
+        {/* Spacer for slide button */}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      <View style={styles.bottomBar}>
-        <Button
-          title={buttonTitle}
-          onPress={primaryAction}
-          variant={status === 'failed' ? 'danger' : 'primary'}
-          size="lg"
-          loading={isProcessing}
-          disabled={preparedPayment ? !canConfirm : !canPrepare}
-          style={styles.settleButton}
-        />
+      {/* Slide to Pay */}
+      <View style={[styles.slideContainer, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={styles.sliderTrack}>
+          <Animated.View
+            style={[
+              styles.sliderThumb,
+              { transform: [{ translateX: slideAnim }] },
+            ]}
+            {...panResponder.panHandlers}
+          >
+            <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
+          </Animated.View>
+          <Text style={styles.slideText}>Slide to Pay</Text>
+          <Animated.View
+            style={[
+              styles.chevronGroup,
+              {
+                opacity: chevronAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 0.8],
+                }),
+              },
+            ]}
+          >
+            <Text style={styles.chevrons}>›››</Text>
+          </Animated.View>
+        </View>
       </View>
-
-      <LoadingOverlay
-        visible={isProcessing}
-        title={status === 'preparing' ? 'Preparing Payment' : 'Confirming on Solana'}
-        subtitle={
-          status === 'preparing'
-            ? 'Checking balances and building the best route...'
-            : 'Waiting for wallet approval and network confirmation...'
-        }
-      />
-    </View>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+  },
+  scrollContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: 40,
   },
   centered: {
     flex: 1,
@@ -566,187 +438,318 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   errorTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.xl,
-    fontWeight: FONT.weight.bold,
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: '800',
     textAlign: 'center',
   },
   errorSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
+    color: '#6B7280',
+    fontSize: 15,
     textAlign: 'center',
     marginTop: SPACING.sm,
   },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingBottom: 120,
+  goBackBtn: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginTop: SPACING.xxl,
   },
-  summarySection: {
+  goBackBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.xxl,
+    marginBottom: SPACING.xxxl,
+    paddingHorizontal: 4,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
+  // Summary card
+  summaryCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginBottom: SPACING.xxl,
   },
   avatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.xxl,
+    marginBottom: 20,
   },
   avatarWrap: {
     alignItems: 'center',
-    width: 80,
+    width: 85,
   },
   avatarLabel: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.medium,
-    marginTop: SPACING.sm,
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 8,
     textAlign: 'center',
   },
-  arrowContainer: {
+  arrowWrap: {
+    paddingHorizontal: 20,
+  },
+  amountRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SPACING.lg,
-    width: 48,
+    alignItems: 'baseline',
+    gap: 8,
+    marginBottom: 8,
   },
-  arrowLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: COLORS.bg.tertiary,
-    borderRadius: 1,
+  amountValue: {
+    fontSize: 42,
+    fontWeight: '900',
+    color: '#111827',
+    letterSpacing: -1,
   },
-  arrowHead: {
-    color: COLORS.text.accent,
-    fontSize: 24,
-    fontWeight: FONT.weight.bold,
-    marginLeft: -2,
+  amountCurrency: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#9CA3AF',
   },
-  summaryLabel: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.medium,
+  fromGroup: {
+    color: '#6B7280',
+    fontSize: 15,
+    fontWeight: '600',
   },
-  summaryAmount: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.hero,
-    fontWeight: FONT.weight.extrabold,
-    marginTop: SPACING.xs,
-  },
-  summaryRecipient: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.semibold,
-    marginTop: SPACING.xs,
-  },
-  summaryMethod: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-    marginTop: SPACING.md,
-    lineHeight: 20,
-    paddingHorizontal: SPACING.lg,
-  },
-  summaryNote: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-  },
-  detailsCard: {
-    marginBottom: SPACING.lg,
-  },
-  detailRow: {
+
+  // Payment Method
+  paymentMethodHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.xs,
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
-  detailLabel: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.medium,
+  paymentMethodTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  devnetBadge: {
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  devnetText: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  // Payment options
+  paymentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+  },
+  paymentOptionSelected: {
+    borderColor: '#7C3AED',
+    borderWidth: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+  },
+  paymentOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     flex: 1,
   },
-  detailValue: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.semibold,
+  paymentIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentIconCircleGray: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentOptionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  paymentOptionBalance: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 3,
+  },
+  radioOuter: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: '#7C3AED',
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#7C3AED',
+  },
+
+  // Transaction Details
+  txDetailsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    padding: 20,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  txDetailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 18,
+  },
+  txDetailsTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  txDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  txDetailLabel: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '600',
     flex: 1,
+  },
+  txDetailValue: {
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'right',
+    flex: 1.5,
   },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border.default,
-    marginVertical: SPACING.sm,
+
+  // Toggle buttons
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 8,
   },
-  promptCard: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xxl,
-    marginBottom: SPACING.lg,
+  toggleBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
-  promptIcon: {
-    fontSize: 32,
-    marginBottom: SPACING.md,
+  toggleBtnActive: {
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderColor: '#7C3AED',
   },
-  promptTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-    textAlign: 'center',
+  toggleBtnText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  promptSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-    lineHeight: 20,
-    paddingHorizontal: SPACING.md,
+  toggleBtnTextActive: {
+    color: '#7C3AED',
   },
-  promptAction: {
-    marginTop: SPACING.xl,
-  },
-  failedCard: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xl,
-    borderColor: COLORS.bg.danger,
-    marginBottom: SPACING.lg,
-  },
-  failedIcon: {
-    color: COLORS.text.danger,
-    fontSize: 28,
-    fontWeight: FONT.weight.bold,
-    marginBottom: SPACING.sm,
-  },
-  failedTitle: {
-    color: COLORS.text.danger,
-    fontSize: FONT.size.lg,
-    fontWeight: FONT.weight.bold,
-  },
-  failedSub: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-    lineHeight: 20,
-    paddingHorizontal: SPACING.md,
-  },
-  failedButton: {
-    marginTop: SPACING.lg,
-  },
-  bottomBar: {
+
+  // Slide to pay
+  slideContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
-    backgroundColor: COLORS.bg.primary,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border.default,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: 16,
+    backgroundColor: 'transparent',
   },
-  settleButton: {
+  sliderTrack: {
     width: '100%',
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.lg,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(237, 225, 255, 0.85)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+  sliderThumb: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  slideText: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#7C3AED',
+    fontSize: 18,
+    fontWeight: '800',
+    marginLeft: -THUMB_SIZE / 2,
+  },
+  chevronGroup: {
+    marginRight: 16,
+  },
+  chevrons: {
+    color: '#7C3AED',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 2,
   },
 });

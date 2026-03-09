@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { disconnectWalletSession } from '@/utils/mwa';
 import { truncateAddress } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
-import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { COLORS, SPACING, FONT } from '@/utils/constants';
 import * as Haptics from 'expo-haptics';
 
 export const ConnectButton: React.FC = () => {
@@ -68,6 +69,7 @@ export const ConnectButton: React.FC = () => {
       title="Connect Solflare Wallet"
       onPress={handleConnect}
       variant="primary"
+      icon={<Ionicons name="wallet-outline" size={20} color={COLORS.text.white} />}
     />
   );
 };
@@ -76,8 +78,8 @@ const styles = StyleSheet.create({
   connected: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.bg.tertiary,
-    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 9999,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
   },

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { getInitials, stringToColor } from '@/utils/formatters';
-import { FONT } from '@/utils/constants';
+import { FONT, COLORS } from '@/utils/constants';
 
 interface AvatarProps {
   name: string;
@@ -9,8 +9,10 @@ interface AvatarProps {
   color?: string;
 }
 
+const DEFAULT_SIZE = 44;
+
 export const Avatar: React.FC<AvatarProps> = ({
-  name, size = 40, color,
+  name, size = DEFAULT_SIZE, color,
 }) => {
   const bgColor = color || stringToColor(name);
   const fontSize = size * 0.4;
@@ -18,8 +20,12 @@ export const Avatar: React.FC<AvatarProps> = ({
   return (
     <View style={[
       styles.container,
+      styles.border,
+      styles.shadow,
       {
-        width: size, height: size, borderRadius: size / 2,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         backgroundColor: bgColor,
       },
     ]}>
@@ -35,8 +41,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  border: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  shadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   text: {
-    color: '#FFFFFF',
+    color: COLORS.bg.dark,
     fontWeight: FONT.weight.bold,
   },
 });

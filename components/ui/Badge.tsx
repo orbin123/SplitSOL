@@ -1,8 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
+import { FONT, SPACING } from '@/utils/constants';
 
-type BadgeVariant = 'accent' | 'success' | 'warning' | 'danger' | 'neutral';
+type BadgeVariant = 'accent' | 'success' | 'warning' | 'danger' | 'neutral' | 'devnet';
 type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
@@ -30,46 +30,52 @@ export function Badge({
 const styles = StyleSheet.create({
   base: {
     alignSelf: 'flex-start',
-    borderRadius: RADIUS.full,
+    borderRadius: 9999,
   },
   text: {
-    fontWeight: FONT.weight.semibold,
+    fontWeight: '600',
   },
 });
 
 const variantStyles = StyleSheet.create({
   accent: {
-    backgroundColor: COLORS.bg.accentSoft,
+    backgroundColor: '#EDE9FE',
   },
   success: {
-    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    backgroundColor: '#D1FAE5',
   },
   warning: {
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    backgroundColor: '#FEF3C7',
   },
   danger: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
   },
   neutral: {
-    backgroundColor: COLORS.bg.tertiary,
+    backgroundColor: '#F0EEFF',
+  },
+  devnet: {
+    backgroundColor: '#EDE9FE',
   },
 });
 
 const textVariantStyles = StyleSheet.create({
   accent: {
-    color: COLORS.text.accent,
+    color: '#7C3AED',
   },
   success: {
-    color: COLORS.text.success,
+    color: '#059669',
   },
   warning: {
-    color: COLORS.bg.dark,
+    color: '#D97706',
   },
   danger: {
-    color: COLORS.text.danger,
+    color: '#EF4444',
   },
   neutral: {
-    color: COLORS.text.secondary,
+    color: '#6B7280',
+  },
+  devnet: {
+    color: '#7C3AED',
   },
 });
 
@@ -86,9 +92,9 @@ const sizeStyles = StyleSheet.create({
 
 const textSizeStyles = StyleSheet.create({
   sm: {
-    fontSize: FONT.size.xs,
+    fontSize: 11,
   },
   md: {
-    fontSize: FONT.size.sm,
+    fontSize: 12,
   },
 });

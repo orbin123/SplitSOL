@@ -1,136 +1,291 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, SectionList } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, SectionList, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
-import { Card } from '@/components/ui/Card';
+import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { COLORS, SPACING, FONT, RADIUS, TAB_BAR_HEIGHT } from '@/utils/constants';
+import { Button } from '@/components/ui/Button';
+import { COLORS, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
 import { resolveTransactionDetails } from '@/utils/transactions';
-import { Transaction } from '@/types';
 
 interface TransactionHistoryItem {
-  transaction: Transaction;
+  id: string;
+  type: 'settlement' | 'expense';
   title: string;
   swapSummary: string | null;
   groupName: string;
+  counterpartyName: string;
   timestampLabel: string;
+  amountUSDC: number;
+  isPositive: boolean;
+  status: 'confirmed' | 'pending' | 'failed';
+  timestamp: string;
 }
 
 function groupByDate(items: TransactionHistoryItem[]) {
   const map = new Map<string, TransactionHistoryItem[]>();
+  const today = new Date().toLocaleDateString('en-US');
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString(
+    'en-US',
+  );
+
   for (const item of items) {
-    const d = new Date(item.transaction.timestamp).toLocaleDateString('en-US', {
+    const dObj = new Date(item.timestamp);
+    const dStr = dObj.toLocaleDateString('en-US');
+
+    let title = dObj.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
-    if (!map.has(d)) map.set(d, []);
-    map.get(d)!.push(item);
+
+    if (dStr === today) title = 'TODAY';
+    if (dStr === yesterday) title = 'YESTERDAY';
+
+    if (!map.has(title)) map.set(title, []);
+    map.get(title)!.push(item);
   }
   return Array.from(map.entries()).map(([title, data]) => ({ title, data }));
 }
 
 export default function TransactionsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const groups = useAppStore((s) => s.groups);
   const transactions = useAppStore((s) => s.transactions);
 
-  const items = useMemo(
-    () =>
-      [...transactions]
-        .sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        )
-        .map((transaction) => {
-          const resolved = resolveTransactionDetails(transaction, groups, user);
+  const [filter, setFilter] = useState<'All' | 'Settlements' | 'Expenses'>('All');
 
-          return {
-            transaction,
-            title: resolved.title,
-            swapSummary: resolved.swapSummary,
-            groupName: `${resolved.groupEmoji} ${resolved.groupName}`,
-            timestampLabel: new Date(transaction.timestamp).toLocaleTimeString(
-              'en-US',
-              {
-                hour: 'numeric',
-                minute: '2-digit',
-              },
-            ),
-          };
-        }),
-    [groups, transactions, user],
-  );
+  const items = useMemo(() => {
+    let combinedItems: TransactionHistoryItem[] = [];
+
+    if (filter === 'All' || filter === 'Settlements') {
+      const txItems = transactions.map((transaction) => {
+        const resolved = resolveTransactionDetails(transaction, groups, user);
+        return {
+          id: transaction.id,
+          type: 'settlement' as const,
+          title: `You settled with ${resolved.counterpartyName}`,
+          swapSummary: resolved.swapSummary,
+          groupName: resolved.groupName, // UI mock doesn't show emoji here
+          counterpartyName: resolved.counterpartyName,
+          timestampLabel: new Date(transaction.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase(),
+          amountUSDC: transaction.amountUSDC ?? 0,
+          isPositive: true,
+          status: transaction.status,
+          timestamp: transaction.timestamp,
+        };
+      });
+      combinedItems = [...combinedItems, ...txItems];
+    }
+
+    if (filter === 'All' || filter === 'Expenses') {
+      groups.forEach((group) => {
+        const currentMember = group.members.find((m) => m.isCurrentUser);
+        if (!currentMember) return;
+
+        group.expenses.forEach((expense) => {
+          const isPaidByMe = expense.paidBy === currentMember.id;
+          const isSplitWithMe = expense.splitAmong.includes(currentMember.id);
+
+          if (!isPaidByMe && !isSplitWithMe) return;
+
+          const payer = group.members.find((m) => m.id === expense.paidBy);
+          const payerName = isPaidByMe ? 'You' : (payer?.name || 'Someone');
+
+          const title = `${payerName} added an expense`;
+
+          let myShare = 0;
+          if (isSplitWithMe) {
+            if (expense.splitType === 'equal') {
+              myShare = expense.amount / expense.splitAmong.length;
+            } else if (expense.customSplits && expense.customSplits[currentMember.id]) {
+              myShare = expense.customSplits[currentMember.id];
+            }
+          }
+
+          let amountImpact = 0;
+          if (isPaidByMe) {
+            amountImpact = expense.amount - myShare;
+          } else {
+            amountImpact = -myShare;
+          }
+
+          if (amountImpact === 0) return;
+
+          let timestampLabel = new Date(expense.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+
+          combinedItems.push({
+            id: expense.id,
+            type: 'expense' as const,
+            title,
+            swapSummary: null,
+            groupName: group.name,
+            counterpartyName: payerName,
+            timestampLabel: timestampLabel,
+            amountUSDC: Math.abs(amountImpact),
+            isPositive: amountImpact > 0,
+            status: amountImpact > 0 ? 'confirmed' : 'pending',
+            timestamp: expense.createdAt,
+          });
+        });
+      });
+    }
+
+    return combinedItems.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+  }, [groups, transactions, user, filter]);
+
   const sections = groupByDate(items);
 
-  if (items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <EmptyState
-          emoji="🧾"
-          title="No transactions yet"
-          subtitle="Settlements will appear here once you start paying people."
-        />
-      </View>
-    );
-  }
+  const calculateTimeAgo = (timestampLabel: string, timestamp: string) => {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    if (hours > 0 && hours < 24) return `${hours}h ago`;
+    if (hours === 0) return `Just now`;
+
+    const dStr = new Date(timestamp).toLocaleDateString('en-US');
+    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-US');
+    if (dStr === yesterday) return "Yesterday";
+
+    return timestampLabel;
+  };
 
   const renderItem = ({ item }: { item: TransactionHistoryItem }) => {
-    const statusStyle =
-      item.transaction.status === 'confirmed'
-        ? styles.statusConfirmed
-        : item.transaction.status === 'failed'
-          ? styles.statusFailed
-          : styles.statusPending;
-    const statusTextStyle =
-      item.transaction.status === 'confirmed'
-        ? styles.statusTextConfirmed
-        : item.transaction.status === 'failed'
-          ? styles.statusTextFailed
-          : styles.statusTextPending;
+    const amountStr = item.amountUSDC.toFixed(2);
+    let amountColor = '#111827';
+    let sign = '';
+
+    if (item.type === 'expense') {
+      amountColor = item.isPositive ? '#10B981' : '#EF4444';
+      sign = item.isPositive ? '+' : '-';
+    }
+
+    const badgeVariant =
+      item.status === 'confirmed'
+        ? 'success'
+        : item.status === 'failed'
+          ? 'danger'
+          : 'warning';
+
+    const timeAgoStr = calculateTimeAgo(item.timestampLabel, item.timestamp);
 
     return (
-      <Card
-        style={styles.card}
-        onPress={() => router.push(`/tx/detail/${item.transaction.id}`)}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => item.type === 'settlement' ? router.push(`/tx/detail/${item.id}`) : null}
+        style={styles.cardTouchable}
       >
-        <View style={styles.cardRow}>
+        <View style={styles.card}>
+          <Avatar name={item.counterpartyName} size={48} />
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle}>{item.title}</Text>
-            {item.swapSummary && (
-              <Text style={styles.cardSwap}>{item.swapSummary}</Text>
-            )}
-            <Text style={styles.cardMeta}>{item.groupName}</Text>
+            <Text style={styles.cardMeta}>
+              {item.groupName} • {timeAgoStr}
+            </Text>
           </View>
           <View style={styles.cardRight}>
-            <Text style={styles.cardTime}>{item.timestampLabel}</Text>
-            <View
+            <Text
               style={[
-                styles.statusBadge,
-                statusStyle,
+                styles.cardAmount,
+                { color: amountColor },
               ]}
             >
-              <Text
-                style={[
-                  styles.statusText,
-                  statusTextStyle,
-                ]}
-              >
-                {item.transaction.status}
-              </Text>
-            </View>
+              {sign}{amountStr} USDC
+            </Text>
+            <Badge
+              label={
+                item.status === 'confirmed'
+                  ? 'Confirmed'
+                  : item.status === 'failed'
+                    ? 'Failed'
+                    : 'Pending'
+              }
+              variant={badgeVariant}
+              size="sm"
+            />
           </View>
         </View>
-      </Card>
+      </TouchableOpacity>
     );
   };
 
+  if (items.length === 0 && filter === 'All') {
+    return (
+      <LinearGradient
+        colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
+        style={styles.container}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={[styles.headerContainer, { paddingTop: insets.top + SPACING.lg }]}>
+          <Text style={styles.headerTitle}>Activity</Text>
+        </View>
+        <View style={{ flex: 1, paddingHorizontal: SPACING.xl }}>
+          <EmptyState
+            emoji="🕐"
+            title="No activity yet"
+            subtitle="Start splitting with friends!"
+            action={
+              <Button
+                title="Add Expense"
+                onPress={() => router.push('/split' as any)}
+              />
+            }
+          />
+        </View>
+      </LinearGradient>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <LinearGradient
+      colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <View style={[styles.headerContainer, { paddingTop: insets.top + SPACING.lg }]}>
+        <Text style={styles.headerTitle}>Activity</Text>
+
+        <View style={styles.filterWrapper}>
+          <View style={styles.filterContainer}>
+            {['All', 'Settlements', 'Expenses'].map((f) => {
+              const isActive = filter === f;
+              return (
+                <TouchableOpacity
+                  key={f}
+                  style={[styles.filterPill, isActive && styles.filterPillActive]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setFilter(f as any);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.filterText,
+                      isActive && styles.filterTextActive,
+                    ]}
+                  >
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
       <SectionList
         sections={sections}
-        keyExtractor={(item) => item.transaction.id}
+        keyExtractor={(item) => item.id}
         renderItem={renderItem}
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionHeader}>{section.title}</Text>
@@ -138,88 +293,116 @@ export default function TransactionsScreen() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
+        ListEmptyComponent={
+          <View style={{ marginTop: 40 }}>
+            <EmptyState
+              emoji="📭"
+              title={`No ${filter.toLowerCase()} found`}
+              subtitle="Try switching filters"
+            />
+          </View>
+        }
       />
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg.primary,
+  },
+  headerContainer: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+  },
+  headerTitle: {
+    color: '#111827',
+    fontSize: 34,
+    fontWeight: '900',
+    marginBottom: SPACING.xl,
+    letterSpacing: -0.5,
+  },
+  filterWrapper: {
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 9999,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  filterPill: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterPillActive: {
+    backgroundColor: '#7C3AED',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  filterText: {
+    color: '#6B7280',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  filterTextActive: {
+    color: '#FFFFFF',
   },
   list: {
-    padding: SPACING.lg,
-    paddingBottom: TAB_BAR_HEIGHT + SPACING.lg,
-    gap: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: TAB_BAR_HEIGHT + SPACING.xxxl + 40,
   },
   sectionHeader: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginTop: 20,
+    marginBottom: 12,
+    letterSpacing: 0.8,
   },
-
+  cardTouchable: {
+    marginBottom: 16,
+  },
   card: {
-    gap: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    gap: 16,
   },
-  cardRow: { flexDirection: 'row', gap: SPACING.md },
   cardInfo: {
     flex: 1,
   },
   cardTitle: {
-    color: COLORS.text.primary,
-    fontSize: FONT.size.md,
-    fontWeight: FONT.weight.medium,
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   cardMeta: {
-    color: COLORS.text.secondary,
-    fontSize: FONT.size.sm,
-    marginTop: SPACING.xs,
-  },
-  cardSwap: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
-    marginTop: 2,
+    color: '#6B7280',
+    fontSize: 13,
+    marginTop: 4,
+    fontWeight: '500',
   },
   cardRight: {
     alignItems: 'flex-end',
-    gap: SPACING.xs,
+    gap: 6,
   },
-  cardTime: {
-    color: COLORS.text.tertiary,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.medium,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.sm,
-  },
-  statusConfirmed: {
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-  },
-  statusPending: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-  },
-  statusFailed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-  },
-  statusText: {
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-    textTransform: 'capitalize',
-  },
-  statusTextConfirmed: {
-    color: COLORS.text.success,
-  },
-  statusTextPending: {
-    color: COLORS.bg.warning,
-  },
-  statusTextFailed: {
-    color: COLORS.text.danger,
+  cardAmount: {
+    fontSize: 15,
+    fontWeight: '800',
   },
 });
