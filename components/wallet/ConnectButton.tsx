@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
+import { showAlert } from '@/store/useAlertStore';
 import { disconnectWalletSession } from '@/utils/mwa';
 import { truncateAddress } from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
@@ -45,7 +46,7 @@ export const ConnectButton: React.FC = () => {
         <Button
           title="Disconnect"
           onPress={() =>
-            Alert.alert('Disconnect Wallet', 'Are you sure you want to disconnect?', [
+            showAlert('Disconnect Wallet', 'Are you sure you want to disconnect?', [
               { text: 'Cancel', style: 'cancel' },
               {
                 text: 'Disconnect',

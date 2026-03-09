@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   StyleSheet,
@@ -93,8 +92,7 @@ export default function CreateGroup() {
     if (!trimmed) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const groupId = createGroup(trimmed, emoji, selectedMemberIds);
-    router.back();
-    router.push(`/group/${groupId}`);
+    router.replace(`/group/${groupId}`);
   };
 
   const toggleSelectedMember = (memberId: string) => {

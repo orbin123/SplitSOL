@@ -107,6 +107,8 @@ export const SOLANA = {
   CLUSTER: 'devnet' as const,
   /** Devnet only: 1 USDC ≈ X SOL (for testing when USDC not available) */
   DEVNET_USDC_TO_SOL: 0.001,
+  /** Approximate network fee for Solana transactions */
+  NETWORK_FEE: 0.000005,
 };
 
 export const APP = {

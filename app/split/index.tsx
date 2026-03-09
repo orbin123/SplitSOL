@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { COLORS, FONT, RADIUS, SPACING } from '@/utils/constants';
-import { Group } from '@/store/types';
+import { Group } from '@/types';
 import { timeAgo } from '@/utils/formatters';
 
 export default function SplitGroupPickerScreen() {
@@ -26,7 +26,7 @@ export default function SplitGroupPickerScreen() {
     const settlements = group.settlements || [];
     const all = [
       ...expenses.map((e) => e.createdAt),
-      ...settlements.map((s) => s.settledAt).filter(Boolean) as string[],
+      ...settlements.map((s) => s.settledAt),
     ];
     if (all.length === 0) return null;
     return all.sort().reverse()[0];
@@ -36,7 +36,7 @@ export default function SplitGroupPickerScreen() {
     const lastActivity = getLastActivity(item);
     return (
       <Card
-        onPress={() => router.replace(`/group/${item.id}/add-split` as any)}
+        onPress={() => router.push(`/group/${item.id}/add-split` as any)}
         style={styles.groupCard}
       >
         <View style={styles.groupRow}>

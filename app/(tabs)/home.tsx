@@ -19,7 +19,7 @@ import {
   TAB_BAR_HEIGHT,
   SHADOWS,
 } from '@/utils/constants';
-import { Group } from '@/store/types';
+import { Group } from '@/types';
 import { seedMockData, clearMockData } from '@/utils/seedMockData';
 
 const getGreeting = () => {

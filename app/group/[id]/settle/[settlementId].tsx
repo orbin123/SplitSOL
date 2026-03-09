@@ -18,6 +18,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { buildMemo, formatCurrency, truncateAddress } from '@/utils/formatters';
 import { MOCK_USDC_BALANCE, MOCK_SOL_BALANCE } from '@/utils/seedMockData';
+import { getSOLBalanceWithRetry, getUSDCBalance } from '@/utils/solana';
 
 type PaymentMethod = 'direct_usdc' | 'autopay';
 
@@ -34,8 +35,6 @@ export default function Settlement() {
   const insets = useSafeAreaInsets();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('direct_usdc');
-  const [isOffline, setIsOffline] = useState(false);
-  const [noWallet, setNoWallet] = useState(false);
   const [isSliding, setIsSliding] = useState(false);
 
   const group = useAppStore((s) => s.getGroup(id));
@@ -55,9 +54,22 @@ export default function Settlement() {
   const recipient = debt?.to;
   const recipientWallet = recipient?.walletAddress;
 
-  // Mock balances
-  const usdcBalance = MOCK_USDC_BALANCE;
-  const solBalance = MOCK_SOL_BALANCE;
+  // Balances — fetch real values for real wallets, fall back to mock constants
+  const [usdcBalance, setUsdcBalance] = useState(MOCK_USDC_BALANCE);
+  const [solBalance, setSolBalance] = useState(MOCK_SOL_BALANCE);
+
+  const isMockWallet = !walletAddress || walletAddress.startsWith('DEMO') || walletAddress.startsWith('MOCK');
+
+  useEffect(() => {
+    if (isMockWallet) return;
+    Promise.all([
+      getSOLBalanceWithRetry(walletAddress!).catch(() => null),
+      getUSDCBalance(walletAddress!).catch(() => null),
+    ]).then(([sol, usdc]) => {
+      if (sol !== null) setSolBalance(sol);
+      if (usdc !== null) setUsdcBalance(usdc);
+    });
+  }, [walletAddress, isMockWallet]);
 
   // Slide-to-pay animation
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -99,16 +111,19 @@ export default function Settlement() {
       txSignature: mockSignature,
       memo,
       settledAt,
+      fromWallet: walletAddress || '',
+      toWallet: recipientWallet || '',
     });
 
     addTransaction({
       groupId: group.id,
       payerWallet: walletAddress || 'DEMO111111111111111111111111111111111111111',
-      receiverWallet: recipientWallet || '',
+      receiverWallet: recipientWallet || 'DEMO222222222222222222222222222222222222222',
       amountUSDC: debt.amount,
       status: 'confirmed',
       signature: mockSignature,
       timestamp: settledAt,
+      memo,
       swap:
         paymentMethod === 'autopay'
           ? {
@@ -130,7 +145,7 @@ export default function Settlement() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     router.replace(
-      `/settle/success?txId=${mockSignature}&groupId=${group.id}&amount=${debt.amount}&from=${currentUser.name}&to=${recipient.name}&groupName=${group.name}&groupEmoji=${group.emoji}&method=${paymentMethod}&recipientWallet=${recipientWallet || ''}` as any,
+      `/settle/success?txId=${mockSignature}&groupId=${group.id}&amount=${debt.amount}&from=${currentUser.name}&to=${recipient.name}&groupName=${group.name}&groupEmoji=${group.emoji}&method=${paymentMethod}&recipientWallet=${recipientWallet || ''}&settledAt=${encodeURIComponent(settledAt)}&memo=${encodeURIComponent(memo)}` as any,
     );
   }, [group, currentUser, recipient, debt, walletAddress, recipientWallet, paymentMethod, addSettlement, addTransaction, router]);
 
@@ -342,7 +357,7 @@ export default function Settlement() {
 
           <View style={styles.txDetailRow}>
             <Text style={styles.txDetailLabel}>Network fee</Text>
-            <Text style={styles.txDetailValue}>~0.000005 SOL</Text>
+            <Text style={styles.txDetailValue}>~{SOLANA.NETWORK_FEE} SOL</Text>
           </View>
 
           <View style={styles.txDetailRow}>
@@ -353,34 +368,6 @@ export default function Settlement() {
                 : 'Not set'}
             </Text>
           </View>
-        </View>
-
-        {/* Dev Toggle Buttons */}
-        <View style={styles.toggleRow}>
-          <TouchableOpacity
-            style={[
-              styles.toggleBtn,
-              isOffline && styles.toggleBtnActive,
-            ]}
-            onPress={() => setIsOffline((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.toggleBtnText, isOffline && styles.toggleBtnTextActive]}>
-              Toggle Offline
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.toggleBtn,
-              noWallet && styles.toggleBtnActive,
-            ]}
-            onPress={() => setNoWallet((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.toggleBtnText, noWallet && styles.toggleBtnTextActive]}>
-              Toggle No Wallet
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* Spacer for slide button */}
@@ -673,33 +660,6 @@ const styles = StyleSheet.create({
     flex: 1.5,
   },
 
-  // Toggle buttons
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    marginTop: 8,
-  },
-  toggleBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.55)',
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
-  },
-  toggleBtnActive: {
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
-    borderColor: '#7C3AED',
-  },
-  toggleBtnText: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  toggleBtnTextActive: {
-    color: '#7C3AED',
-  },
 
   // Slide to pay
   slideContainer: {

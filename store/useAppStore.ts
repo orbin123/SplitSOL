@@ -85,16 +85,26 @@ export const useAppStore = create<AppState>()(
         );
 
         if (existingMember) {
+          const updatedName = member.name || existingMember.name;
           set((state) => ({
             members: state.members.map((item) =>
               item.id === existingMember.id
                 ? {
-                    ...item,
-                    name: member.name || item.name,
-                    isFavorite: member.isFavorite || item.isFavorite,
-                  }
+                  ...item,
+                  name: updatedName,
+                  isFavorite: member.isFavorite || item.isFavorite,
+                }
                 : item,
             ),
+            // Sync name into all GroupMembers linked via memberId
+            groups: state.groups.map((group) => ({
+              ...group,
+              members: group.members.map((gm) =>
+                gm.memberId === existingMember.id
+                  ? { ...gm, name: updatedName }
+                  : gm,
+              ),
+            })),
           }));
 
           return existingMember.id;
@@ -161,20 +171,20 @@ export const useAppStore = create<AppState>()(
 
           const nextNotifications =
             nextTransaction.status === 'confirmed' &&
-            group &&
-            state.user.notificationsEnabled
+              group &&
+              state.user.notificationsEnabled
               ? [
-                  {
-                    id: generateId(),
-                    type: 'settlement' as const,
-                    relatedGroupId: group.id,
-                    relatedPaymentId: nextTransaction.id,
-                    message: `${payer} settled ${formatCurrency(nextTransaction.amountUSDC)} in ${group.name}.`,
-                    timestamp: new Date().toISOString(),
-                    read: false,
-                  },
-                  ...state.notifications,
-                ]
+                {
+                  id: generateId(),
+                  type: 'settlement' as const,
+                  relatedGroupId: group.id,
+                  relatedPaymentId: nextTransaction.id,
+                  message: `${payer} settled ${formatCurrency(nextTransaction.amountUSDC)} in ${group.name}.`,
+                  timestamp: new Date().toISOString(),
+                  read: false,
+                },
+                ...state.notifications,
+              ]
               : state.notifications;
 
           return {
@@ -186,12 +196,7 @@ export const useAppStore = create<AppState>()(
         return nextTransaction.id;
       },
 
-      updateTransactionStatus: (id, status, chainData) =>
-        set((state) => ({
-          transactions: state.transactions.map((tx) =>
-            tx.id === id ? { ...tx, status, chain: chainData } : tx,
-          ),
-        })),
+
 
       addNotification: (notif) => {
         if (!get().user.notificationsEnabled) {
@@ -262,17 +267,17 @@ export const useAppStore = create<AppState>()(
           groups: [...state.groups, group],
           notifications: state.user.notificationsEnabled
             ? [
-                {
-                  id: generateId(),
-                  type: 'invite',
-                  relatedGroupId: id,
-                  relatedPaymentId: null,
-                  message: `You were added to ${name}.`,
-                  timestamp: new Date().toISOString(),
-                  read: false,
-                },
-                ...state.notifications,
-              ]
+              {
+                id: generateId(),
+                type: 'invite',
+                relatedGroupId: id,
+                relatedPaymentId: null,
+                message: `You were added to ${name}.`,
+                timestamp: new Date().toISOString(),
+                read: false,
+              },
+              ...state.notifications,
+            ]
             : state.notifications,
         }));
         return id;
@@ -285,6 +290,16 @@ export const useAppStore = create<AppState>()(
 
       addGroupMember: (groupId, name, walletAddress, memberId = null) =>
         set((state) => {
+          const group = state.groups.find((g) => g.id === groupId);
+          if (group) {
+            const isDuplicate = walletAddress
+              ? group.members.some((m) => m.walletAddress === walletAddress)
+              : group.members.some(
+                (m) => m.name.toLowerCase() === name.toLowerCase(),
+              );
+            if (isDuplicate) return {};
+          }
+
           const shouldNotifyCurrentUser =
             walletAddress === state.user.walletAddress ||
             (!!state.user.name && name === state.user.name);
@@ -293,38 +308,37 @@ export const useAppStore = create<AppState>()(
             groups: state.groups.map((group) =>
               group.id === groupId
                 ? {
-                    ...group,
-                    members: [
-                      ...group.members,
-                      {
-                        id: generateId(),
-                        name,
-                        walletAddress: walletAddress ?? null,
-                        memberId:
-                          memberId ??
-                          getMemberIdByWallet(state.members, walletAddress ?? null),
-                        isCurrentUser: false,
-                      },
-                    ],
-                  }
+                  ...group,
+                  members: [
+                    ...group.members,
+                    {
+                      id: generateId(),
+                      name,
+                      walletAddress: walletAddress ?? null,
+                      memberId:
+                        memberId ??
+                        getMemberIdByWallet(state.members, walletAddress ?? null),
+                      isCurrentUser: false,
+                    },
+                  ],
+                }
                 : group,
             ),
             notifications: shouldNotifyCurrentUser && state.user.notificationsEnabled
               ? [
-                  {
-                    id: generateId(),
-                    type: 'invite',
-                    relatedGroupId: groupId,
-                    relatedPaymentId: null,
-                    message: `You were added to ${
-                      state.groups.find((group) => group.id === groupId)?.name ??
-                      'a group'
+                {
+                  id: generateId(),
+                  type: 'invite',
+                  relatedGroupId: groupId,
+                  relatedPaymentId: null,
+                  message: `You were added to ${state.groups.find((group) => group.id === groupId)?.name ??
+                    'a group'
                     }.`,
-                    timestamp: new Date().toISOString(),
-                    read: false,
-                  },
-                  ...state.notifications,
-                ]
+                  timestamp: new Date().toISOString(),
+                  read: false,
+                },
+                ...state.notifications,
+              ]
               : state.notifications,
           };
         }),
@@ -334,17 +348,17 @@ export const useAppStore = create<AppState>()(
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
-                  ...group,
-                  members: group.members.map((member) =>
-                    member.id === groupMemberId
-                      ? {
-                          ...member,
-                          walletAddress: wallet,
-                          memberId: getMemberIdByWallet(state.members, wallet),
-                        }
-                      : member,
-                  ),
-                }
+                ...group,
+                members: group.members.map((member) =>
+                  member.id === groupMemberId
+                    ? {
+                      ...member,
+                      walletAddress: wallet,
+                      memberId: getMemberIdByWallet(state.members, wallet),
+                    }
+                    : member,
+                ),
+              }
               : group,
           ),
         })),
@@ -354,40 +368,42 @@ export const useAppStore = create<AppState>()(
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
-                  ...group,
-                  members: group.members.filter((member) => member.id !== groupMemberId),
-                }
+                ...group,
+                members: group.members.filter((member) => member.id !== groupMemberId),
+              }
               : group,
           ),
         })),
 
-      addExpense: (groupId, expenseData) =>
+      addExpense: (groupId, expenseData) => {
+        if (!expenseData.splitAmong.length) return;
         set((state) => ({
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
-                  ...group,
-                  expenses: [
-                    {
-                      ...expenseData,
-                      id: generateId(),
-                      createdAt: new Date().toISOString(),
-                    },
-                    ...group.expenses,
-                  ],
-                }
+                ...group,
+                expenses: [
+                  {
+                    ...expenseData,
+                    id: generateId(),
+                    createdAt: new Date().toISOString(),
+                  },
+                  ...group.expenses,
+                ],
+              }
               : group,
           ),
-        })),
+        }));
+      },
 
       removeExpense: (groupId, expenseId) =>
         set((state) => ({
           groups: state.groups.map((group) =>
             group.id === groupId
               ? {
-                  ...group,
-                  expenses: group.expenses.filter((expense) => expense.id !== expenseId),
-                }
+                ...group,
+                expenses: group.expenses.filter((expense) => expense.id !== expenseId),
+              }
               : group,
           ),
         })),
@@ -402,9 +418,9 @@ export const useAppStore = create<AppState>()(
           groups: state.groups.map((group) =>
             group.id === settlement.groupId
               ? {
-                  ...group,
-                  settlements: [settlement, ...group.settlements],
-                }
+                ...group,
+                settlements: [settlement, ...group.settlements],
+              }
               : group,
           ),
         }));

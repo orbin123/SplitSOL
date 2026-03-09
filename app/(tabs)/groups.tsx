@@ -22,7 +22,7 @@ import {
   TAB_BAR_HEIGHT,
   SHADOWS,
 } from '@/utils/constants';
-import { Group } from '@/store/types';
+import { Group } from '@/types';
 
 const GROUP_BG_COLORS = [
   '#FEE2E2', '#FEF3C7', '#D1FAE5', '#DBEAFE',

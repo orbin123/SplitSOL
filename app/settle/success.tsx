@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge } from '@/components/ui/Badge';
-import { COLORS, FONT, SPACING } from '@/utils/constants';
+import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { truncateAddress } from '@/utils/formatters';
 
 const formatDateTime = (date: Date) =>
@@ -39,10 +39,12 @@ export default function SettleSuccessScreen() {
         groupEmoji: string;
         method: string;
         recipientWallet: string;
+        settledAt: string;
+        memo: string;
     }>();
 
     const amount = parseFloat(params.amount || '0');
-    const timestamp = new Date();
+    const timestamp = params.settledAt ? new Date(params.settledAt) : new Date();
 
     // Animations
     const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -82,7 +84,7 @@ export default function SettleSuccessScreen() {
             `👤 To: ${params.to}`,
             `📁 Group: ${params.groupEmoji} ${params.groupName}`,
             `🔗 Method: ${params.method === 'autopay' ? 'AutoPay (SOL → USDC)' : 'Direct USDC Transfer'}`,
-            `📝 Memo: SplitSOL | ${params.groupName} | ${params.from} → ${params.to} | ${amount.toFixed(2)} USDC`,
+            `📝 Memo: ${params.memo || `SplitSOL | ${params.groupName} | ${params.from} → ${params.to} | ${amount.toFixed(2)} USDC`}`,
             `⏱ Time: ${formatDateTime(timestamp)}`,
             `🌐 Network: Solana Devnet`,
             `🆔 Tx: ${params.txId}`,
@@ -189,7 +191,7 @@ export default function SettleSuccessScreen() {
                     <View style={styles.divider} />
                     <DetailRow
                         label="Network fee"
-                        value="~0.000005 SOL"
+                        value={`~${SOLANA.NETWORK_FEE} SOL`}
                     />
                     <View style={styles.divider} />
                     <DetailRow

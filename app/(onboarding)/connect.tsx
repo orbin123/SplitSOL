@@ -1,28 +1,29 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Linking,
-  TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
-  Animated,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Line } from 'react-native-svg';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/useAppStore';
 import { connectWallet } from '@/utils/mwa';
 import { getWalletConnectionErrorCopy } from '@/utils/errorMessages';
-import { COLORS, FONT, SPACING, SHADOWS } from '@/utils/constants';
+import { COLORS, FONT, SPACING } from '@/utils/constants';
 
-const SUCCESS_DELAY_MS = 1500;
-const CIRCLE_SIZE = Dimensions.get('window').width * 0.65;
+const MAX_NAME_LENGTH = 20;
+
+type Stage = 'form' | 'connecting' | 'success' | 'error';
 
 export default function ConnectScreen() {
   const router = useRouter();
@@ -30,195 +31,143 @@ export default function ConnectScreen() {
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [errorTitle, setErrorTitle] = useState('Wallet connection failed');
+  const [name, setName] = useState(user.name);
+  const [stage, setStage] = useState<Stage>('form');
+  const [errorMsg, setErrorMsg] = useState('');
   const [showInstallAction, setShowInstallAction] = useState(false);
-  const [success, setSuccess] = useState(false);
 
-  // Dot animations
-  const dot1X = useRef(new Animated.Value(0)).current;
-  const dot2X = useRef(new Animated.Value(0)).current;
-  const walletFloat = useRef(new Animated.Value(0)).current;
+  const trimmedName = name.trim();
 
-  useEffect(() => {
-    const makeDot = (anim: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, { toValue: 0, duration: 0, delay, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 62, duration: 1600, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
-      );
+  const nameError = useMemo(() => {
+    if (!name.length) return '';
+    if (!trimmedName) return 'Name cannot be empty.';
+    if (trimmedName.length > MAX_NAME_LENGTH) return `Max ${MAX_NAME_LENGTH} characters.`;
+    return '';
+  }, [name, trimmedName]);
 
-    const floatAnim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(walletFloat, { toValue: -5, duration: 1600, useNativeDriver: true }),
-        Animated.timing(walletFloat, { toValue: 5, duration: 1600, useNativeDriver: true }),
-        Animated.timing(walletFloat, { toValue: 0, duration: 1600, useNativeDriver: true }),
-      ])
-    );
+  const canConnect = trimmedName.length > 0 && !nameError;
 
-    const d1 = makeDot(dot1X, 0);
-    const d2 = makeDot(dot2X, 800);
-    d1.start();
-    d2.start();
-    floatAnim.start();
-
-    return () => {
-      d1.stop();
-      d2.stop();
-      floatAnim.stop();
-    };
-  }, []);
-
-  const handleConnect = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setErrorTitle('Wallet connection failed');
+  const handleConnect = async () => {
+    if (!canConnect) return;
+    setStage('connecting');
+    setErrorMsg('');
     setShowInstallAction(false);
-    setSuccess(false);
-
     try {
       const result = await connectWallet();
-      setUser(user.name, result.address, result.authToken);
+      setUser(trimmedName, result.address, result.authToken);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSuccess(true);
-      setLoading(false);
+      setStage('success');
     } catch (err: any) {
       const copy = getWalletConnectionErrorCopy(err);
-      setErrorTitle(copy.title);
-      setError(copy.message);
+      setErrorMsg(copy.message);
       setShowInstallAction(copy.showInstallAction);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setLoading(false);
+      setStage('error');
     }
-  }, [setUser, user.name]);
-
-  useEffect(() => {
-    handleConnect();
-  }, [handleConnect]);
-
-  useEffect(() => {
-    if (!success) return;
-    const timer = setTimeout(() => {
-      if (user.name.trim()) {
-        router.replace('/(tabs)/home');
-      } else {
-        router.replace('/(onboarding)/username' as any);
-      }
-    }, SUCCESS_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [success, user.name, router]);
+  };
 
   return (
     <ScreenWrapper variant="onboarding" style={styles.container}>
-      <View style={styles.fullScreen}>
-        {/* Back button */}
-        <TouchableOpacity
-          onPress={() => router.replace('/(onboarding)/welcome')}
-          style={[styles.backButton, { top: insets.top + 16 }]}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color="#7C3AED" />
-        </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[styles.inner, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}>
 
-        {/* Top zone: circular illustration */}
-        <View style={styles.topZone}>
-          <View style={[styles.circle, { width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: CIRCLE_SIZE / 2 }]}>
-            {/* Phone card */}
-            <View style={styles.phoneCard}>
-              <Ionicons name="phone-portrait-outline" size={28} color={COLORS.bg.accent} />
-              <Text style={styles.phoneLabel}>PHONE</Text>
-            </View>
-
-            {/* Dashed line + animated dots */}
-            <View style={styles.lineContainer}>
-              <Svg width={70} height={4} style={StyleSheet.absoluteFillObject}>
-                <Line x1={0} y1={2} x2={70} y2={2} stroke="#7C3AED" strokeDasharray="5,4" strokeOpacity={0.5} strokeWidth={2} />
-              </Svg>
-              <Animated.View style={[styles.dot, { transform: [{ translateX: dot1X }] }]} />
-              <Animated.View style={[styles.dot, { transform: [{ translateX: dot2X }] }]} />
-            </View>
-
-            {/* Wallet card with float animation */}
-            <Animated.View style={{ transform: [{ translateY: walletFloat }] }}>
-              <View style={styles.walletCardWrapper}>
-                <View style={styles.walletCard}>
-                  <Ionicons name="wallet-outline" size={28} color="#FFFFFF" />
-                  <Text style={styles.walletLabel}>WALLET</Text>
-                </View>
-                <View style={styles.greenBadge}>
-                  <View style={styles.badgeLine} />
-                  <View style={styles.badgeLine} />
-                </View>
-              </View>
-            </Animated.View>
-          </View>
-        </View>
-
-        {/* Bottom card */}
-        <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 24 }]}>
-          {/* Drag handle */}
-          <View style={styles.dragHandle} />
-
-          {success ? (
-            <View style={styles.iconWrap}>
-              <Ionicons name="checkmark-circle" size={48} color={COLORS.bg.success} />
-            </View>
-          ) : (
-            <View style={styles.iconWrap}>
-              <Ionicons name="wallet-outline" size={48} color={COLORS.bg.accent} />
-            </View>
-          )}
-
-          <Text style={styles.title}>
-            {success ? 'Connected!' : 'Connect Your Wallet'}
-          </Text>
-          <Text style={[styles.subtitle, error && styles.errorSubtitle]}>
-            {error
-              ? error
-              : 'SplitSOL uses Solflare to manage your on-chain settlements'}
-          </Text>
-
-          <View style={styles.spacer} />
-
-          {loading && !success ? (
-            <View style={styles.loadingButton}>
-              <ActivityIndicator color={COLORS.bg.accent} size="small" />
-              <Text style={styles.loadingText}>Connecting...</Text>
-            </View>
-          ) : success ? null : (
-            <>
-              {showInstallAction && (
-                <Button
-                  title="Install Solflare"
-                  onPress={() => void Linking.openURL('https://solflare.onelink.me/WVZY')}
-                  variant="secondary"
-                  style={styles.fullWidthButton}
-                />
-              )}
-              <Button
-                title="Connect Solflare"
-                onPress={handleConnect}
-                variant="primary"
-                style={styles.fullWidthButton}
-                icon={<Ionicons name="wallet-outline" size={18} color="#FFFFFF" />}
-              />
-            </>
-          )}
-
-          {!success && (
-            <TouchableOpacity style={styles.whyLink} activeOpacity={0.7}>
-              <Text style={styles.whyLinkText}>Why do I need a wallet?</Text>
+          {/* Back button — hidden on success */}
+          {stage !== 'success' && (
+            <TouchableOpacity
+              onPress={() => router.replace('/(onboarding)/welcome')}
+              style={styles.backButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={24} color="rgba(255,255,255,0.9)" />
             </TouchableOpacity>
           )}
 
-          {error && (
-            <Text style={styles.demoError}>Demo Error State</Text>
-          )}
+          <View style={styles.body}>
+            {stage === 'success' ? (
+              /* ── Success card ── */
+              <View style={styles.card}>
+                <View style={styles.successIconWrap}>
+                  <Ionicons name="checkmark-circle" size={72} color="#10B981" />
+                </View>
+                <Text style={styles.successTitle}>You're all set, {trimmedName}!</Text>
+                <Text style={styles.successSub}>
+                  Wallet connected and ready to split.
+                </Text>
+                <Button
+                  title="Go to Home"
+                  onPress={() => router.replace('/(tabs)/home')}
+                  variant="primary"
+                  size="lg"
+                  style={styles.fullWidth}
+                  icon={<Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
+                />
+              </View>
+            ) : (
+              /* ── Form card ── */
+              <View style={styles.card}>
+                <Text style={styles.formTitle}>Welcome to SplitSOL</Text>
+                <Text style={styles.formSub}>
+                  Choose a display name, then connect your Solflare wallet.
+                </Text>
+
+                <Input
+                  placeholder="Your display name"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={MAX_NAME_LENGTH}
+                  returnKeyType="done"
+                  onSubmitEditing={canConnect && stage !== 'connecting' ? handleConnect : undefined}
+                  error={nameError || undefined}
+                  editable={stage !== 'connecting'}
+                  containerStyle={styles.inputContainer}
+                />
+                <Text style={styles.counter}>{name.length}/{MAX_NAME_LENGTH}</Text>
+
+                {stage === 'error' && !!errorMsg && (
+                  <View style={styles.errorBox}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                    <Text style={styles.errorText}>{errorMsg}</Text>
+                  </View>
+                )}
+
+                <View style={styles.buttonGroup}>
+                  {stage === 'connecting' ? (
+                    <View style={styles.connectingRow}>
+                      <ActivityIndicator color={COLORS.bg.accent} size="small" />
+                      <Text style={styles.connectingText}>Connecting to Solflare…</Text>
+                    </View>
+                  ) : (
+                    <>
+                      {showInstallAction && (
+                        <Button
+                          title="Install Solflare"
+                          onPress={() => void Linking.openURL('https://solflare.onelink.me/WVZY')}
+                          variant="secondary"
+                          style={styles.fullWidth}
+                        />
+                      )}
+                      <Button
+                        title={stage === 'error' ? 'Try Again' : 'Connect Solflare Wallet'}
+                        onPress={handleConnect}
+                        variant="primary"
+                        size="lg"
+                        disabled={!canConnect}
+                        style={styles.fullWidth}
+                        icon={<Ionicons name="wallet-outline" size={18} color="#FFFFFF" />}
+                      />
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 }
@@ -227,175 +176,117 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  fullScreen: {
+  flex: {
     flex: 1,
-    position: 'relative',
+  },
+  inner: {
+    flex: 1,
+    paddingHorizontal: SPACING.xxl,
   },
   backButton: {
-    position: 'absolute',
-    left: 24,
-    zIndex: 10,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topZone: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circle: {
     backgroundColor: 'rgba(255,255,255,0.18)',
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-  },
-  phoneCard: {
-    width: 70,
-    height: 90,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    ...SHADOWS.float,
-  },
-  phoneLabel: {
-    fontSize: 9,
-    color: '#6B7280',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  lineContainer: {
-    width: 70,
-    height: 4,
-    position: 'relative',
-  },
-  dot: {
-    position: 'absolute',
-    top: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#7C3AED',
-  },
-  walletCardWrapper: {
-    position: 'relative',
-  },
-  walletCard: {
-    width: 70,
-    height: 70,
-    backgroundColor: '#7C3AED',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    ...SHADOWS.float,
-  },
-  walletLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  greenBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#10B981',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1.5,
-  },
-  badgeLine: {
-    width: 10,
-    height: 1.5,
-    backgroundColor: '#FFFFFF',
-  },
-  bottomCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingTop: 28,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 24,
-  },
-  iconWrap: {
     marginBottom: SPACING.lg,
   },
-  title: {
-    color: COLORS.bg.dark,
-    fontSize: 24,
+  body: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: SPACING.xxl,
+    alignItems: 'center',
+    gap: SPACING.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+
+  // Form
+  formTitle: {
+    color: '#111827',
+    fontSize: 22,
     fontWeight: FONT.weight.bold,
     textAlign: 'center',
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
-  subtitle: {
+  formSub: {
     color: COLORS.text.secondary,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
-    maxWidth: 280,
+    marginBottom: SPACING.md,
   },
-  errorSubtitle: {
-    color: COLORS.bg.danger,
-  },
-  spacer: {
-    height: 24,
-  },
-  loadingButton: {
+  inputContainer: {
     width: '100%',
+  },
+  counter: {
+    color: COLORS.text.tertiary,
+    fontSize: 12,
+    alignSelf: 'flex-end',
+    marginTop: -SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderRadius: 12,
+    padding: SPACING.md,
+    width: '100%',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    lineHeight: 19,
+    flex: 1,
+  },
+  buttonGroup: {
+    width: '100%',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  connectingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    gap: SPACING.md,
+    paddingVertical: 16,
     borderRadius: 9999,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
-    opacity: 0.8,
+    backgroundColor: 'rgba(124,58,237,0.1)',
   },
-  loadingText: {
+  connectingText: {
     color: COLORS.bg.accent,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: FONT.weight.semibold,
   },
-  fullWidthButton: {
+  fullWidth: {
     width: '100%',
+  },
+
+  // Success
+  successIconWrap: {
     marginBottom: SPACING.sm,
   },
-  whyLink: {
-    marginTop: SPACING.lg,
-    paddingVertical: SPACING.sm,
+  successTitle: {
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: FONT.weight.bold,
+    textAlign: 'center',
   },
-  whyLinkText: {
-    color: COLORS.bg.accent,
-    fontSize: 13,
-    fontWeight: FONT.weight.medium,
-  },
-  demoError: {
-    color: COLORS.text.tertiary,
-    fontSize: 11,
-    marginTop: SPACING.sm,
+  successSub: {
+    color: COLORS.text.secondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: SPACING.lg,
   },
 });

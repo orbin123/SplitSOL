@@ -25,7 +25,7 @@ import { Card } from '@/components/ui/Card';
 import { formatCurrency, truncateAddress } from '@/utils/formatters';
 import { getExplorerUrl } from '@/utils/solana';
 import { resolveTransactionDetails } from '@/utils/transactions';
-import { COLORS, FONT, SPACING } from '@/utils/constants';
+import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { Transaction } from '@/types';
 
 const formatDateTime = (value: string) =>
@@ -185,14 +185,16 @@ export default function TransactionDetailScreen() {
           <View style={styles.txDetailRow}>
             <Text style={styles.txDetailLabel}>To Wallet</Text>
             <Text style={styles.txDetailValue}>
-              {truncateAddress(transaction.receiverWallet, 6)}
+              {transaction.receiverWallet
+                ? truncateAddress(transaction.receiverWallet, 6)
+                : 'Not set'}
             </Text>
           </View>
 
           <View style={styles.txDetailRow}>
             <Text style={styles.txDetailLabel}>Memo</Text>
             <Text style={styles.txDetailValue} numberOfLines={2}>
-              {(transaction as Transaction & { memo?: string }).memo ?? '—'}
+              {transaction.memo ?? '—'}
             </Text>
           </View>
 
@@ -236,7 +238,9 @@ export default function TransactionDetailScreen() {
 
           <View style={[styles.txDetailRow, { marginBottom: 0 }]}>
             <Text style={styles.txDetailLabel}>Network Fee</Text>
-            <Text style={styles.txDetailValue}>~0.000005 SOL</Text>
+            <Text style={styles.txDetailValue}>
+              ~{transaction.chain?.networkFee ?? SOLANA.NETWORK_FEE} SOL
+            </Text>
           </View>
         </View>
 

@@ -25,7 +25,7 @@ import { formatCurrency } from '@/utils/formatters';
 import { getTotalExpenses } from '@/utils/calculations';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 import { buildGroupInviteQrPayload } from '@/utils/memberQr';
-import { Expense, SimplifiedDebt } from '@/store/types';
+import { Expense, SimplifiedDebt } from '@/types';
 
 let QRCode: any = null;
 try {
@@ -41,7 +41,6 @@ export default function GroupDetail() {
   const insets = useSafeAreaInsets();
   const group = useAppStore((s) => s.getGroup(id));
   const deleteGroup = useAppStore((s) => s.deleteGroup);
-  const removeMember = useAppStore((s) => s.removeMember);
   const getSimplifiedDebts = useAppStore((s) => s.getSimplifiedDebts);
   const getBalances = useAppStore((s) => s.getBalances);
   const addNotification = useAppStore((s) => s.addNotification);

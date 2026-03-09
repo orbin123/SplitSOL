@@ -102,11 +102,7 @@ export default function TransactionsScreen() {
 
           let myShare = 0;
           if (isSplitWithMe) {
-            if (expense.splitType === 'equal') {
-              myShare = expense.amount / expense.splitAmong.length;
-            } else if (expense.customSplits && expense.customSplits[currentMember.id]) {
-              myShare = expense.customSplits[currentMember.id];
-            }
+            myShare = expense.amount / expense.splitAmong.length;
           }
 
           let amountImpact = 0;

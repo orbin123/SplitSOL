@@ -37,8 +37,7 @@ export interface Expense {
   amount: number;
   paidBy: string;
   splitAmong: string[];
-  splitType: 'equal' | 'custom';
-  customSplits?: Record<string, number>;
+  splitType: 'equal';
   createdAt: string;
   category?: ExpenseCategory;
 }
@@ -53,8 +52,10 @@ export interface Settlement {
   status: 'pending' | 'processing' | 'confirmed' | 'failed';
   txSignature?: string;
   memo?: string;
-  settledAt?: string;
+  settledAt: string;
   explorerUrl?: string;
+  fromWallet?: string;
+  toWallet?: string;
 }
 
 export interface Group {
@@ -92,6 +93,7 @@ export interface Transaction {
   status: 'pending' | 'confirmed' | 'failed';
   signature: string | null;
   timestamp: string;
+  memo?: string;
   swap: TransactionSwap | null;
   chain: TransactionChain | null;
 }
@@ -141,11 +143,7 @@ export interface AppState {
     tx: Omit<Transaction, 'id' | 'timestamp'> &
       Partial<Pick<Transaction, 'id' | 'timestamp'>>,
   ) => string;
-  updateTransactionStatus: (
-    id: string,
-    status: Transaction['status'],
-    chainData: TransactionChain | null,
-  ) => void;
+
   addNotification: (
     notif: Omit<Notification, 'id' | 'timestamp' | 'read'> &
       Partial<Pick<Notification, 'id' | 'timestamp' | 'read'>>,
