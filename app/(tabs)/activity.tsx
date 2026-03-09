@@ -1,167 +1,190 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SectionList, TouchableOpacity } from 'react-native';
+import {
+  SectionList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppStore } from '@/store/useAppStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, TAB_BAR_HEIGHT } from '@/utils/constants';
-import { resolveTransactionDetails } from '@/utils/transactions';
 
-interface TransactionHistoryItem {
+interface ActivityItem {
   id: string;
   type: 'settlement' | 'expense';
+  direction: 'sent' | 'received' | 'neutral';
   title: string;
-  swapSummary: string | null;
+  metaSuffix: string | null; // e.g. "via SOL equivalent"
   groupName: string;
+  groupEmoji: string;
   counterpartyName: string;
-  timestampLabel: string;
   amountUSDC: number;
-  isPositive: boolean;
+  isPositive: boolean; // for expense coloring
   status: 'confirmed' | 'pending' | 'failed';
+  paymentMethod: string | null;
   timestamp: string;
 }
 
-function groupByDate(items: TransactionHistoryItem[]) {
-  const map = new Map<string, TransactionHistoryItem[]>();
-  const today = new Date().toLocaleDateString('en-US');
-  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString(
-    'en-US',
-  );
+function paymentMethodLabel(method: string | null | undefined): string | null {
+  if (!method || method === 'USDC') return null;
+  if (method === 'SOL_EQUIVALENT') return 'SOL equiv.';
+  if (method === 'JUPITER_SWAP') return 'Jupiter';
+  return method;
+}
+
+function groupByDate(items: ActivityItem[]) {
+  const map = new Map<string, ActivityItem[]>();
+  const todayStr = new Date().toLocaleDateString('en-US');
+  const yesterdayStr = new Date(Date.now() - 86_400_000).toLocaleDateString('en-US');
 
   for (const item of items) {
-    const dObj = new Date(item.timestamp);
-    const dStr = dObj.toLocaleDateString('en-US');
-
-    let title = dObj.toLocaleDateString('en-US', {
+    const d = new Date(item.timestamp);
+    const dStr = d.toLocaleDateString('en-US');
+    let header = d.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
+    if (dStr === todayStr) header = 'TODAY';
+    else if (dStr === yesterdayStr) header = 'YESTERDAY';
 
-    if (dStr === today) title = 'TODAY';
-    if (dStr === yesterday) title = 'YESTERDAY';
-
-    if (!map.has(title)) map.set(title, []);
-    map.get(title)!.push(item);
+    if (!map.has(header)) map.set(header, []);
+    map.get(header)!.push(item);
   }
   return Array.from(map.entries()).map(([title, data]) => ({ title, data }));
 }
 
-export default function TransactionsScreen() {
+function timeAgoLabel(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  if (mins < 1) return 'Just now';
+  if (hours < 1) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  const todayStr = new Date().toLocaleDateString('en-US');
+  const dStr = new Date(timestamp).toLocaleDateString('en-US');
+  const yesterdayStr = new Date(Date.now() - 86_400_000).toLocaleDateString('en-US');
+  if (dStr === yesterdayStr) return 'Yesterday';
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+export default function ActivityScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const user = useAppStore((s) => s.user);
   const groups = useAppStore((s) => s.groups);
-  const transactions = useAppStore((s) => s.transactions);
+  const user = useAppStore((s) => s.user);
 
   const [filter, setFilter] = useState<'All' | 'Settlements' | 'Expenses'>('All');
 
-  const items = useMemo(() => {
-    let combinedItems: TransactionHistoryItem[] = [];
+  const items = useMemo<ActivityItem[]>(() => {
+    const combined: ActivityItem[] = [];
 
-    if (filter === 'All' || filter === 'Settlements') {
-      const txItems = transactions.map((transaction) => {
-        const resolved = resolveTransactionDetails(transaction, groups, user);
-        return {
-          id: transaction.id,
-          type: 'settlement' as const,
-          title: `You settled with ${resolved.counterpartyName}`,
-          swapSummary: resolved.swapSummary,
-          groupName: resolved.groupName, // UI mock doesn't show emoji here
-          counterpartyName: resolved.counterpartyName,
-          timestampLabel: new Date(transaction.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase(),
-          amountUSDC: transaction.amountUSDC ?? 0,
-          isPositive: true,
-          status: transaction.status,
-          timestamp: transaction.timestamp,
-        };
-      });
-      combinedItems = [...combinedItems, ...txItems];
-    }
+    groups.forEach((group) => {
+      const currentMember = group.members.find((m) => m.isCurrentUser);
 
-    if (filter === 'All' || filter === 'Expenses') {
-      groups.forEach((group) => {
-        const currentMember = group.members.find((m) => m.isCurrentUser);
+      // ── Settlements from this group ──────────────────────────────────────
+      if (filter === 'All' || filter === 'Settlements') {
+        group.settlements.forEach((s) => {
+          if (s.status === 'failed') return;
+
+          const isSent = s.from === currentMember?.id;
+          const isReceived = s.to === currentMember?.id;
+          if (!isSent && !isReceived) return;
+
+          const counterpartyId = isSent ? s.to : s.from;
+          const counterparty = group.members.find((m) => m.id === counterpartyId);
+          const counterpartyName = counterparty?.name ?? 'Unknown';
+
+          const methodLabel = paymentMethodLabel(s.paymentMethod);
+
+          combined.push({
+            id: s.id,
+            type: 'settlement',
+            direction: isSent ? 'sent' : 'received',
+            title: isSent
+              ? `You paid ${counterpartyName}`
+              : `${counterpartyName} paid you`,
+            metaSuffix: methodLabel ? `via ${methodLabel}` : null,
+            groupName: group.name,
+            groupEmoji: group.emoji,
+            counterpartyName,
+            amountUSDC: s.amount,
+            isPositive: isReceived,
+            status: s.status === 'confirmed' ? 'confirmed' : 'pending',
+            paymentMethod: s.paymentMethod ?? null,
+            timestamp: s.settledAt,
+          });
+        });
+      }
+
+      // ── Expenses from this group ─────────────────────────────────────────
+      if (filter === 'All' || filter === 'Expenses') {
         if (!currentMember) return;
 
         group.expenses.forEach((expense) => {
           const isPaidByMe = expense.paidBy === currentMember.id;
           const isSplitWithMe = expense.splitAmong.includes(currentMember.id);
-
           if (!isPaidByMe && !isSplitWithMe) return;
 
           const payer = group.members.find((m) => m.id === expense.paidBy);
-          const payerName = isPaidByMe ? 'You' : (payer?.name || 'Someone');
+          const payerName = isPaidByMe ? 'You' : (payer?.name ?? 'Someone');
+          const myShare = isSplitWithMe
+            ? expense.amount / expense.splitAmong.length
+            : 0;
+          const impact = isPaidByMe ? expense.amount - myShare : -myShare;
+          if (Math.abs(impact) < 0.01) return;
 
-          const title = `${payerName} added an expense`;
-
-          let myShare = 0;
-          if (isSplitWithMe) {
-            myShare = expense.amount / expense.splitAmong.length;
-          }
-
-          let amountImpact = 0;
-          if (isPaidByMe) {
-            amountImpact = expense.amount - myShare;
-          } else {
-            amountImpact = -myShare;
-          }
-
-          if (amountImpact === 0) return;
-
-          let timestampLabel = new Date(expense.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
-
-          combinedItems.push({
+          combined.push({
             id: expense.id,
-            type: 'expense' as const,
-            title,
-            swapSummary: null,
+            type: 'expense',
+            direction: 'neutral',
+            title: isPaidByMe
+              ? `You added "${expense.description}"`
+              : `${payerName} added "${expense.description}"`,
+            metaSuffix: null,
             groupName: group.name,
+            groupEmoji: group.emoji,
             counterpartyName: payerName,
-            timestampLabel: timestampLabel,
-            amountUSDC: Math.abs(amountImpact),
-            isPositive: amountImpact > 0,
-            status: amountImpact > 0 ? 'confirmed' : 'pending',
+            amountUSDC: Math.abs(impact),
+            isPositive: impact > 0,
+            status: 'confirmed',
+            paymentMethod: null,
             timestamp: expense.createdAt,
           });
         });
-      });
-    }
+      }
+    });
 
-    return combinedItems.sort(
+    return combined.sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
-  }, [groups, transactions, user, filter]);
+  }, [groups, user, filter]);
 
-  const sections = groupByDate(items);
+  const sections = useMemo(() => groupByDate(items), [items]);
 
-  const calculateTimeAgo = (timestampLabel: string, timestamp: string) => {
-    const diff = Date.now() - new Date(timestamp).getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    if (hours > 0 && hours < 24) return `${hours}h ago`;
-    if (hours === 0) return `Just now`;
+  const renderItem = ({ item }: { item: ActivityItem }) => {
+    const timeStr = timeAgoLabel(item.timestamp);
+    const methodLabel = paymentMethodLabel(item.paymentMethod);
+    const isSettlement = item.type === 'settlement';
 
-    const dStr = new Date(timestamp).toLocaleDateString('en-US');
-    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-US');
-    if (dStr === yesterday) return "Yesterday";
-
-    return timestampLabel;
-  };
-
-  const renderItem = ({ item }: { item: TransactionHistoryItem }) => {
-    const amountStr = item.amountUSDC.toFixed(2);
-    let amountColor = '#111827';
-    let sign = '';
-
-    if (item.type === 'expense') {
-      amountColor = item.isPositive ? '#10B981' : '#EF4444';
-      sign = item.isPositive ? '+' : '-';
-    }
+    // Amount color: green for received/lent, red for owed, neutral for settlements
+    const amountColor = isSettlement
+      ? '#111827'
+      : item.isPositive
+        ? COLORS.bg.success
+        : COLORS.bg.danger;
 
     const badgeVariant =
       item.status === 'confirmed'
@@ -170,30 +193,63 @@ export default function TransactionsScreen() {
           ? 'danger'
           : 'warning';
 
-    const timeAgoStr = calculateTimeAgo(item.timestampLabel, item.timestamp);
+    const metaText = [
+      `${item.groupEmoji} ${item.groupName}`,
+      timeStr,
+      item.metaSuffix,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     return (
       <TouchableOpacity
         activeOpacity={0.7}
-        onPress={() => item.type === 'settlement' ? router.push(`/tx/detail/${item.id}`) : null}
+        onPress={() => {
+          if (isSettlement) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/tx/detail/${item.id}` as any);
+          }
+        }}
         style={styles.cardTouchable}
       >
         <View style={styles.card}>
-          <Avatar name={item.counterpartyName} size={48} />
-          <View style={styles.cardInfo}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardMeta}>
-              {item.groupName} • {timeAgoStr}
-            </Text>
-          </View>
-          <View style={styles.cardRight}>
-            <Text
+          {/* Direction icon for settlements, avatar for expenses */}
+          {isSettlement ? (
+            <View
               style={[
-                styles.cardAmount,
-                { color: amountColor },
+                styles.directionIconWrap,
+                {
+                  backgroundColor:
+                    item.direction === 'sent'
+                      ? 'rgba(124, 58, 237, 0.1)'
+                      : 'rgba(16, 185, 129, 0.1)',
+                },
               ]}
             >
-              {sign}{amountStr} USDC
+              <Ionicons
+                name={item.direction === 'sent' ? 'arrow-up-outline' : 'arrow-down-outline'}
+                size={22}
+                color={item.direction === 'sent' ? '#7C3AED' : '#10B981'}
+              />
+            </View>
+          ) : (
+            <Avatar name={item.counterpartyName} size={48} />
+          )}
+
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.cardMeta} numberOfLines={1}>
+              {metaText}
+            </Text>
+          </View>
+
+          <View style={styles.cardRight}>
+            <Text style={[styles.cardAmount, { color: amountColor }]}>
+              {isSettlement
+                ? `${item.amountUSDC.toFixed(2)} USDC`
+                : `${item.isPositive ? '+' : '-'}${item.amountUSDC.toFixed(2)} USDC`}
             </Text>
             <Badge
               label={
@@ -206,13 +262,20 @@ export default function TransactionsScreen() {
               variant={badgeVariant}
               size="sm"
             />
+            {methodLabel && (
+              <View style={styles.methodPill}>
+                <Text style={styles.methodPillText}>{methodLabel}</Text>
+              </View>
+            )}
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-  if (items.length === 0 && filter === 'All') {
+  const isEmpty = items.length === 0 && filter === 'All';
+
+  if (isEmpty) {
     return (
       <LinearGradient
         colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
@@ -227,11 +290,11 @@ export default function TransactionsScreen() {
           <EmptyState
             emoji="🕐"
             title="No activity yet"
-            subtitle="Start splitting with friends!"
+            subtitle="Settle up or add an expense to see activity here."
             action={
               <Button
-                title="Add Expense"
-                onPress={() => router.push('/split' as any)}
+                title="New Group"
+                onPress={() => router.push('/group/create' as any)}
               />
             }
           />
@@ -249,10 +312,9 @@ export default function TransactionsScreen() {
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + SPACING.lg }]}>
         <Text style={styles.headerTitle}>Activity</Text>
-
         <View style={styles.filterWrapper}>
           <View style={styles.filterContainer}>
-            {['All', 'Settlements', 'Expenses'].map((f) => {
+            {(['All', 'Settlements', 'Expenses'] as const).map((f) => {
               const isActive = filter === f;
               return (
                 <TouchableOpacity
@@ -260,16 +322,11 @@ export default function TransactionsScreen() {
                   style={[styles.filterPill, isActive && styles.filterPillActive]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setFilter(f as any);
+                    setFilter(f);
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      isActive && styles.filterTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
                     {f}
                   </Text>
                 </TouchableOpacity>
@@ -304,9 +361,7 @@ export default function TransactionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   headerContainer: {
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.md,
@@ -344,14 +399,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  filterText: {
-    color: '#6B7280',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  filterTextActive: {
-    color: '#FFFFFF',
-  },
+  filterText: { color: '#6B7280', fontSize: 15, fontWeight: '700' },
+  filterTextActive: { color: '#FFFFFF' },
   list: {
     paddingHorizontal: SPACING.xl,
     paddingBottom: TAB_BAR_HEIGHT + SPACING.xxxl + 40,
@@ -365,40 +414,48 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     letterSpacing: 0.8,
   },
-  cardTouchable: {
-    marginBottom: 16,
-  },
+  cardTouchable: { marginBottom: 12 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 18,
+    padding: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.65)',
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.9)',
-    gap: 16,
+    gap: 14,
   },
-  cardInfo: {
-    flex: 1,
+  directionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  cardInfo: { flex: 1 },
   cardTitle: {
     color: '#111827',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   cardMeta: {
     color: '#6B7280',
-    fontSize: 13,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 3,
     fontWeight: '500',
   },
-  cardRight: {
-    alignItems: 'flex-end',
-    gap: 6,
+  cardRight: { alignItems: 'flex-end', gap: 5 },
+  cardAmount: { fontSize: 15, fontWeight: '800' },
+  methodPill: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
-  cardAmount: {
-    fontSize: 15,
-    fontWeight: '800',
+  methodPillText: {
+    color: '#7C3AED',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

@@ -5,6 +5,10 @@ import { getConnection } from './solana';
 
 export type WalletTransaction = Transaction | VersionedTransaction;
 
+/** MWA returns addresses as Base64EncodedAddress; convert to base58 for the rest of the app. */
+const base64ToBase58 = (base64: string): string =>
+  new PublicKey(Buffer.from(base64, 'base64')).toBase58();
+
 export interface AuthResult {
   address: string;
   authToken: string;
@@ -25,7 +29,7 @@ export const connectWallet = async (): Promise<AuthResult> => {
     });
 
     return {
-      address: auth.accounts[0].address,
+      address: base64ToBase58(auth.accounts[0].address),
       authToken: auth.auth_token,
     };
   });
@@ -43,7 +47,7 @@ export const reauthorizeWallet = async (
     });
 
     return {
-      address: auth.accounts[0].address,
+      address: base64ToBase58(auth.accounts[0].address),
       authToken: auth.auth_token,
     };
   });
@@ -79,7 +83,7 @@ export const signAndSendTransaction = async (
         await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.lastValidBlockHeight = lastValidBlockHeight;
-      transaction.feePayer = new PublicKey(auth.accounts[0].address);
+      transaction.feePayer = new PublicKey(base64ToBase58(auth.accounts[0].address));
     }
 
     const signatures = await wallet.signAndSendTransactions({

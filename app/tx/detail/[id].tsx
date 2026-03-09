@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import {
-  Alert,
   Linking,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -21,12 +21,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/store/useAppStore';
 import { showAlert } from '@/store/useAlertStore';
-import { Card } from '@/components/ui/Card';
 import { formatCurrency, truncateAddress } from '@/utils/formatters';
 import { getExplorerUrl } from '@/utils/solana';
-import { resolveTransactionDetails } from '@/utils/transactions';
 import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
-import { Transaction } from '@/types';
+import type { Group, Settlement } from '@/types';
 
 const formatDateTime = (value: string) =>
   new Date(value).toLocaleString('en-US', {
@@ -37,23 +35,56 @@ const formatDateTime = (value: string) =>
     minute: '2-digit',
   });
 
+function paymentMethodDisplay(method: string | null | undefined): string {
+  if (!method || method === 'USDC') return 'Direct USDC Transfer';
+  if (method === 'SOL_EQUIVALENT') return 'AutoPay — SOL equivalent (devnet)';
+  if (method === 'JUPITER_SWAP') return 'AutoPay — Jupiter SOL → USDC';
+  return method;
+}
+
 export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const user = useAppStore((s) => s.user);
   const groups = useAppStore((s) => s.groups);
   const transactions = useAppStore((s) => s.transactions);
 
-  const transaction = transactions.find((item) => item.id === id);
-  const resolved = useMemo(
-    () =>
-      transaction ? resolveTransactionDetails(transaction, groups, user) : null,
-    [groups, transaction, user],
+  // Primary: look up as a settlement ID across all groups
+  const { settlement, settlementGroup } = useMemo<{
+    settlement: Settlement | null;
+    settlementGroup: Group | null;
+  }>(() => {
+    for (const group of groups) {
+      const s = group.settlements.find((item) => item.id === id);
+      if (s) return { settlement: s, settlementGroup: group };
+    }
+    return { settlement: null, settlementGroup: null };
+  }, [groups, id]);
+
+  // Secondary: also look up legacy transaction (for backward compat or if no settlement)
+  const transaction = useMemo(() => {
+    if (settlement?.txSignature) {
+      return (
+        transactions.find((t) => t.signature === settlement.txSignature) ??
+        transactions.find((t) => t.id === id) ??
+        null
+      );
+    }
+    return transactions.find((t) => t.id === id) ?? null;
+  }, [transactions, settlement, id]);
+
+  // Resolve member names from the group
+  const fromMember = useMemo(
+    () => settlementGroup?.members.find((m) => m.id === settlement?.from) ?? null,
+    [settlementGroup, settlement],
+  );
+  const toMember = useMemo(
+    () => settlementGroup?.members.find((m) => m.id === settlement?.to) ?? null,
+    [settlementGroup, settlement],
   );
 
-  if (!transaction || !resolved) {
+  if (!settlement && !transaction) {
     return (
       <LinearGradient
         colors={['#FDCBEE', '#E7D4FC', '#C1E6F5']}
@@ -68,7 +99,7 @@ export default function TransactionDetailScreen() {
             subtitle="This transaction may have been removed from local history."
             action={
               <Button
-                title="Back to Transactions"
+                title="Back to Activity"
                 onPress={() => router.replace('/(tabs)/activity')}
               />
             }
@@ -78,21 +109,73 @@ export default function TransactionDetailScreen() {
     );
   }
 
+  // ── Resolved display values ──────────────────────────────────────────────
+  const txSignature = settlement?.txSignature ?? transaction?.signature ?? null;
+  const amount = settlement?.amount ?? transaction?.amountUSDC ?? 0;
+  const status = settlement?.status ?? transaction?.status ?? 'pending';
+  const memo = settlement?.memo ?? transaction?.memo ?? null;
+  const paymentMethod = settlement?.paymentMethod ?? null;
+  const timestamp = settlement?.settledAt ?? transaction?.timestamp ?? new Date().toISOString();
+  const confirmedAt = settlement?.confirmedAt ?? null;
+  const networkFee = transaction?.chain?.networkFee ?? SOLANA.NETWORK_FEE;
+
+  // Names
+  const payerName = fromMember?.name ?? truncateAddress(transaction?.payerWallet ?? '', 5) ?? 'Unknown';
+  const receiverName = toMember?.name ?? truncateAddress(transaction?.receiverWallet ?? '', 5) ?? 'Unknown';
+
+  // Wallets
+  const fromWallet =
+    fromMember?.walletAddress ??
+    transaction?.payerWallet ??
+    settlement?.fromWallet ??
+    null;
+  const toWallet =
+    toMember?.walletAddress ??
+    transaction?.receiverWallet ??
+    settlement?.toWallet ??
+    null;
+
+  // Group
+  const groupName = settlementGroup?.name ?? 'Unknown group';
+  const groupEmoji = settlementGroup?.emoji ?? '🧾';
+
   const openExplorer = () => {
-    if (!transaction.signature) return;
-    Linking.openURL(getExplorerUrl(transaction.signature));
+    if (!txSignature) return;
+    Linking.openURL(getExplorerUrl(txSignature));
   };
 
   const copySignature = async () => {
-    if (!transaction.signature) return;
-    await Clipboard.setStringAsync(transaction.signature);
+    if (!txSignature) return;
+    await Clipboard.setStringAsync(txSignature);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showAlert('Copied', 'Transaction signature copied to clipboard.');
   };
 
   const shareReceipt = async () => {
-    const text = `SplitSOL: ${formatCurrency(transaction.amountUSDC)} - ${resolved.groupEmoji} ${resolved.groupName}\n${transaction.signature ? getExplorerUrl(transaction.signature) : ''}`;
-    await Share.share({ message: text, title: 'Transaction Receipt' });
+    const lines = [
+      `SplitSOL Settlement Receipt`,
+      ``,
+      `💰 Amount: ${formatCurrency(amount)}`,
+      `👤 From: ${payerName}`,
+      `👤 To: ${receiverName}`,
+      `📁 Group: ${groupEmoji} ${groupName}`,
+      `🔗 Method: ${paymentMethodDisplay(paymentMethod)}`,
+      memo ? `📝 Memo: ${memo}` : null,
+      `⏱ Time: ${formatDateTime(timestamp)}`,
+      `🌐 Network: Solana ${SOLANA.CLUSTER}`,
+      txSignature ? `🆔 Tx: ${txSignature}` : null,
+      txSignature ? `🔍 Explorer: ${getExplorerUrl(txSignature)}` : null,
+      ``,
+      `Powered by SplitSOL ⚡`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    try {
+      await Share.share({ message: lines, title: 'SplitSOL Receipt' });
+    } catch {
+      // user cancelled
+    }
   };
 
   return (
@@ -126,133 +209,132 @@ export default function TransactionDetailScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarWrap}>
-              <Avatar name={resolved.payerName} size={60} color="#C4B5FD" />
-              <Text style={styles.avatarLabel}>{resolved.payerName}</Text>
+              <Avatar name={payerName} size={60} color="#C4B5FD" />
+              <Text style={styles.avatarLabel}>{payerName}</Text>
             </View>
             <View style={styles.arrowWrap}>
               <Ionicons name="arrow-forward" size={22} color="#9CA3AF" />
             </View>
             <View style={styles.avatarWrap}>
-              <Avatar name={resolved.receiverName} size={60} color="#FBCFE8" />
-              <Text style={styles.avatarLabel}>{resolved.receiverName}</Text>
+              <Avatar name={receiverName} size={60} color="#FBCFE8" />
+              <Text style={styles.avatarLabel}>{receiverName}</Text>
             </View>
           </View>
+
           <View style={styles.amountRow}>
             <Text style={styles.amountValue}>
-              {formatCurrency(transaction.amountUSDC).split(' ')[0]}
+              {amount.toFixed(2)}
             </Text>
             <Text style={styles.amountCurrency}>USDC</Text>
           </View>
-          <Text style={styles.fromGroup}>
-            {resolved.groupEmoji} {resolved.groupName}
-          </Text>
 
-          {/* Status Badge */}
-          <View style={{ marginTop: 16 }}>
+          <Text style={styles.fromGroup}>{groupEmoji} {groupName}</Text>
+
+          <View style={styles.badgeRow}>
             <Badge
               label={
-                transaction.status === 'confirmed'
-                  ? 'Confirmed'
-                  : transaction.status === 'failed'
-                    ? 'Failed'
-                    : 'Pending'
+                status === 'confirmed' ? 'Confirmed' :
+                status === 'failed' ? 'Failed' : 'Pending'
               }
               variant={
-                transaction.status === 'confirmed'
-                  ? 'success'
-                  : transaction.status === 'failed'
-                    ? 'danger'
-                    : 'warning'
+                status === 'confirmed' ? 'success' :
+                status === 'failed' ? 'danger' : 'warning'
               }
+            />
+            <Badge
+              label={SOLANA.CLUSTER === 'devnet' ? 'Devnet' : 'Mainnet'}
+              variant="devnet"
             />
           </View>
         </View>
 
-        {/* Details List */}
+        {/* Details Card */}
         <View style={styles.detailsCard}>
-          <View style={styles.txDetailsHeader}>
-            <Ionicons name="list" size={22} color="#7C3AED" />
-            <Text style={styles.txDetailsTitle}>Details</Text>
+          <View style={styles.detailsHeader}>
+            <Ionicons name="receipt-outline" size={20} color="#7C3AED" />
+            <Text style={styles.detailsTitle}>Details</Text>
           </View>
 
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>From Wallet</Text>
-            <Text style={styles.txDetailValue}>
-              {truncateAddress(transaction.payerWallet, 6)}
-            </Text>
-          </View>
+          <DetailRow label="Payment method" value={paymentMethodDisplay(paymentMethod)} />
 
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>To Wallet</Text>
-            <Text style={styles.txDetailValue}>
-              {transaction.receiverWallet
-                ? truncateAddress(transaction.receiverWallet, 6)
-                : 'Not set'}
-            </Text>
-          </View>
+          {fromWallet ? (
+            <DetailRow
+              label="From wallet"
+              value={truncateAddress(fromWallet, 6)}
+              mono
+            />
+          ) : null}
 
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>Memo</Text>
-            <Text style={styles.txDetailValue} numberOfLines={2}>
-              {transaction.memo ?? '—'}
-            </Text>
-          </View>
+          {toWallet ? (
+            <DetailRow
+              label="To wallet"
+              value={truncateAddress(toWallet, 6)}
+              mono
+            />
+          ) : null}
 
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>Signature</Text>
-            <View style={styles.sigRow}>
-              <Text style={styles.txDetailValue}>
-                {transaction.signature
-                  ? truncateAddress(transaction.signature, 8)
-                  : '—'}
-              </Text>
-              {transaction.signature && (
-                <TouchableOpacity
-                  onPress={() => void copySignature()}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Ionicons
-                    name="copy-outline"
-                    size={16}
-                    color={COLORS.text.secondary}
-                    style={{ marginLeft: 6 }}
-                  />
-                </TouchableOpacity>
-              )}
+          {memo ? <DetailRow label="Memo" value={memo} multiline /> : null}
+
+          <DetailRow label="Date" value={formatDateTime(timestamp)} />
+
+          {confirmedAt && confirmedAt !== timestamp ? (
+            <DetailRow label="Confirmed at" value={formatDateTime(confirmedAt)} />
+          ) : null}
+
+          <DetailRow label="Network fee" value={`~${networkFee} SOL`} />
+
+          {txSignature ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Signature</Text>
+              <TouchableOpacity
+                style={styles.sigRow}
+                onPress={() => void copySignature()}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.detailValue, styles.mono]} numberOfLines={1}>
+                  {truncateAddress(txSignature, 8)}
+                </Text>
+                <Ionicons
+                  name="copy-outline"
+                  size={15}
+                  color={COLORS.text.secondary}
+                  style={{ marginLeft: 6 }}
+                />
+              </TouchableOpacity>
             </View>
-          </View>
-
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>Time</Text>
-            <Text style={styles.txDetailValue}>
-              {formatDateTime(transaction.timestamp)}
-            </Text>
-          </View>
-
-          <View style={styles.txDetailRow}>
-            <Text style={styles.txDetailLabel}>Network</Text>
-            <View style={{ alignItems: 'flex-end', flex: 1.5 }}>
-              <Badge label="Devnet" variant="devnet" size="sm" />
-            </View>
-          </View>
-
-          <View style={[styles.txDetailRow, { marginBottom: 0 }]}>
-            <Text style={styles.txDetailLabel}>Network Fee</Text>
-            <Text style={styles.txDetailValue}>
-              ~{transaction.chain?.networkFee ?? SOLANA.NETWORK_FEE} SOL
-            </Text>
-          </View>
+          ) : null}
         </View>
 
-        <View style={styles.actions}>
+        {/* Full signature block (copyable) */}
+        {txSignature && (
           <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={openExplorer}
-            activeOpacity={0.8}
+            style={styles.sigCard}
+            onPress={() => void copySignature()}
+            activeOpacity={0.75}
           >
-            <Ionicons name="open-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.primaryBtnText}>View Explorer</Text>
+            <View style={styles.sigCardHeader}>
+              <Ionicons name="key-outline" size={16} color="#7C3AED" />
+              <Text style={styles.sigCardLabel}>Full Signature</Text>
+              <Ionicons name="copy-outline" size={15} color="#7C3AED" />
+            </View>
+            <Text style={styles.sigFull} selectable numberOfLines={3}>
+              {txSignature}
+            </Text>
           </TouchableOpacity>
+        )}
+
+        {/* Actions */}
+        <View style={styles.actions}>
+          {txSignature ? (
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={openExplorer}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="open-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>View on Explorer</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             style={styles.secondaryBtn}
@@ -260,7 +342,7 @@ export default function TransactionDetailScreen() {
             activeOpacity={0.8}
           >
             <Ionicons name="share-outline" size={20} color="#7C3AED" />
-            <Text style={styles.secondaryBtnText}>Share Details</Text>
+            <Text style={styles.secondaryBtnText}>Share Receipt</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -268,29 +350,45 @@ export default function TransactionDetailScreen() {
   );
 }
 
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  multiline?: boolean;
+}) {
+  return (
+    <View style={[styles.detailRow, multiline && { alignItems: 'flex-start' }]}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text
+        style={[styles.detailValue, mono && styles.mono]}
+        numberOfLines={multiline ? 4 : 1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   missingWrap: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
   },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: SPACING.xl,
-    gap: SPACING.lg,
-  },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: SPACING.xl, gap: SPACING.lg },
 
   // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.md,
     paddingHorizontal: 4,
   },
   backButton: {
@@ -302,11 +400,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-  },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#111827' },
 
   // Summary card
   summaryCard: {
@@ -317,88 +411,52 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     paddingHorizontal: 24,
     alignItems: 'center',
-    marginBottom: SPACING.xs,
   },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  avatarWrap: {
-    alignItems: 'center',
-    width: 85,
-  },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  avatarWrap: { alignItems: 'center', width: 85 },
   avatarLabel: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 8,
-    textAlign: 'center',
+    color: '#111827', fontSize: 15, fontWeight: '700',
+    marginTop: 8, textAlign: 'center',
   },
-  arrowWrap: {
-    paddingHorizontal: 20,
-  },
+  arrowWrap: { paddingHorizontal: 20 },
   amountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    marginBottom: 8,
+    flexDirection: 'row', alignItems: 'baseline',
+    gap: 8, marginBottom: 8,
   },
-  amountValue: {
-    fontSize: 42,
-    fontWeight: '900',
-    color: '#111827',
-    letterSpacing: -1,
-  },
-  amountCurrency: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#9CA3AF',
-  },
-  fromGroup: {
-    color: '#6B7280',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  amountValue: { fontSize: 42, fontWeight: '900', color: '#111827', letterSpacing: -1 },
+  amountCurrency: { fontSize: 20, fontWeight: '800', color: '#9CA3AF' },
+  fromGroup: { color: '#6B7280', fontSize: 15, fontWeight: '600', marginBottom: 16 },
+  badgeRow: { flexDirection: 'row', gap: 8 },
 
-  // Details List
+  // Details Card
   detailsCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.65)',
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.8)',
     padding: 20,
-    marginBottom: SPACING.xs,
   },
-  txDetailsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 18,
+  detailsHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 8, marginBottom: 18,
   },
-  txDetailsTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  txDetailRow: {
+  detailsTitle: { fontSize: 17, fontWeight: '800', color: '#111827' },
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
+    alignItems: 'center',
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  txDetailLabel: {
-    color: '#6B7280',
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
+  detailLabel: { color: '#6B7280', fontSize: 14, fontWeight: '600', flex: 1 },
+  detailValue: {
+    color: '#111827', fontSize: 14, fontWeight: '700',
+    textAlign: 'right', flex: 1.5,
   },
-  txDetailValue: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'right',
-    flex: 1.5,
+  mono: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
   },
   sigRow: {
     flexDirection: 'row',
@@ -407,39 +465,42 @@ const styles = StyleSheet.create({
     flex: 1.5,
   },
 
+  // Full signature card
+  sigCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.2)',
+    padding: 16,
+    gap: 10,
+  },
+  sigCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sigCardLabel: { flex: 1, color: '#7C3AED', fontSize: 14, fontWeight: '700' },
+  sigFull: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 18,
+  },
+
   // Actions
-  actions: {
-    marginTop: 8,
-    gap: 12,
-  },
+  actions: { gap: 12 },
   primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#7C3AED',
-    borderRadius: 24,
-    paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#7C3AED', borderRadius: 24, paddingVertical: 16,
   },
-  primaryBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   secondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 24,
-    paddingVertical: 16,
+    borderRadius: 24, paddingVertical: 16,
     borderWidth: 1.5,
     borderColor: 'rgba(124, 58, 237, 0.3)',
   },
-  secondaryBtnText: {
-    color: '#7C3AED',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  secondaryBtnText: { color: '#7C3AED', fontSize: 16, fontWeight: '800' },
 });

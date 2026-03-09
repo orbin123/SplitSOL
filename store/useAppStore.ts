@@ -485,7 +485,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'splitsol-store',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         user: state.user,
@@ -496,12 +496,26 @@ export const useAppStore = create<AppState>()(
       }),
       migrate: (persistedState) => {
         const legacyState = (persistedState ?? {}) as LegacyPersistedState;
+        // Strip any mock/seed data (IDs prefixed with 'mock-') from prior sessions
+        const notMock = (id: string) => !id.startsWith('mock-');
+
+        const toBase58Address = (addr: string | null | undefined): string | null => {
+          if (!addr) return null;
+          if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return addr;
+          try {
+            const { PublicKey } = require('@solana/web3.js');
+            return new PublicKey(Buffer.from(addr, 'base64')).toBase58();
+          } catch {
+            return null;
+          }
+        };
 
         return {
           user: {
             name: legacyState.user?.name ?? '',
-            walletAddress:
+            walletAddress: toBase58Address(
               legacyState.user?.walletAddress ?? legacyState.walletAddress ?? null,
+            ),
             walletAuthToken:
               legacyState.user?.walletAuthToken ??
               legacyState.walletAuthToken ??
@@ -511,10 +525,10 @@ export const useAppStore = create<AppState>()(
             createdAt:
               legacyState.user?.createdAt ?? new Date().toISOString(),
           },
-          members: legacyState.members ?? legacyState.contacts ?? [],
-          groups: legacyState.groups ?? [],
-          transactions: legacyState.transactions ?? [],
-          notifications: legacyState.notifications ?? [],
+          members: (legacyState.members ?? legacyState.contacts ?? []).filter((m) => notMock(m.id)),
+          groups: (legacyState.groups ?? []).filter((g) => notMock(g.id)),
+          transactions: (legacyState.transactions ?? []).filter((t) => notMock(t.id)),
+          notifications: (legacyState.notifications ?? []).filter((n) => notMock(n.id)),
         };
       },
     },
