@@ -17,7 +17,6 @@ import { Avatar } from '@/components/ui/Avatar';
 import { useAppStore } from '@/store/useAppStore';
 import { COLORS, FONT, SPACING, SOLANA } from '@/utils/constants';
 import { buildMemo, formatCurrency, truncateAddress } from '@/utils/formatters';
-import { MOCK_USDC_BALANCE, MOCK_SOL_BALANCE } from '@/utils/seedMockData';
 import { getSOLBalanceWithRetry, getUSDCBalance } from '@/utils/solana';
 
 type PaymentMethod = 'direct_usdc' | 'autopay';
@@ -54,14 +53,11 @@ export default function Settlement() {
   const recipient = debt?.to;
   const recipientWallet = recipient?.walletAddress;
 
-  // Balances — fetch real values for real wallets, fall back to mock constants
-  const [usdcBalance, setUsdcBalance] = useState(MOCK_USDC_BALANCE);
-  const [solBalance, setSolBalance] = useState(MOCK_SOL_BALANCE);
-
-  const isMockWallet = !walletAddress || walletAddress.startsWith('DEMO') || walletAddress.startsWith('MOCK');
+  const [usdcBalance, setUsdcBalance] = useState(0);
+  const [solBalance, setSolBalance] = useState(0);
 
   useEffect(() => {
-    if (isMockWallet) return;
+    if (!walletAddress) return;
     Promise.all([
       getSOLBalanceWithRetry(walletAddress!).catch(() => null),
       getUSDCBalance(walletAddress!).catch(() => null),
@@ -69,7 +65,7 @@ export default function Settlement() {
       if (sol !== null) setSolBalance(sol);
       if (usdc !== null) setUsdcBalance(usdc);
     });
-  }, [walletAddress, isMockWallet]);
+  }, [walletAddress]);
 
   // Slide-to-pay animation
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -117,8 +113,8 @@ export default function Settlement() {
 
     addTransaction({
       groupId: group.id,
-      payerWallet: walletAddress || 'DEMO111111111111111111111111111111111111111',
-      receiverWallet: recipientWallet || 'DEMO222222222222222222222222222222222222222',
+      payerWallet: walletAddress || '',
+      receiverWallet: recipientWallet || '',
       amountUSDC: debt.amount,
       status: 'confirmed',
       signature: mockSignature,

@@ -9,6 +9,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -23,7 +24,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QRScanner } from '@/components/ui/QRScanner';
-import { SplitSolQrPayload } from '@/utils/memberQr';
+import { SplitSolQrPayload, isValidWalletAddress } from '@/utils/memberQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
 import { Member } from '@/types';
 
@@ -44,6 +45,9 @@ export default function CreateGroup() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [pickerSelection, setPickerSelection] = useState<string[]>([]);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualWallet, setManualWallet] = useState('');
 
   const availableMembers = useMemo(() => {
     return [...members]
@@ -86,6 +90,29 @@ export default function CreateGroup() {
       return a.name.localeCompare(b.name);
     });
   }, [members]);
+
+  const manualWalletError =
+    manualWallet.trim() && !isValidWalletAddress(manualWallet.trim())
+      ? 'Invalid Solana address'
+      : null;
+  const canAddManual = manualName.trim().length > 0 && !manualWalletError;
+
+  const handleAddManual = () => {
+    if (!canAddManual) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const wallet = manualWallet.trim() || null;
+    const memberId = addMember({
+      name: manualName.trim(),
+      walletAddress: wallet,
+      isFavorite: false,
+    });
+    setSelectedMemberIds((cur) =>
+      cur.includes(memberId) ? cur : [...cur, memberId],
+    );
+    setManualName('');
+    setManualWallet('');
+    setShowManualModal(false);
+  };
 
   const handleCreate = () => {
     const trimmed = name.trim();
@@ -288,6 +315,15 @@ export default function CreateGroup() {
                 <Text style={styles.actionTextBold}>Scan QR to Add</Text>
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.actionCardSolid}
+                onPress={() => setShowManualModal(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="pencil-outline" size={20} color="#6B7280" />
+                <Text style={styles.actionTextBold}>Add Manually</Text>
+              </TouchableOpacity>
+
               <Button
                 title="Create Group"
                 onPress={handleCreate}
@@ -311,6 +347,71 @@ export default function CreateGroup() {
           onClose={() => setScannerVisible(false)}
           hint="Scan a SplitSOL member to add them to this group"
         />
+      </Modal>
+
+      {/* Manual Add Modal */}
+      <Modal
+        visible={showManualModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowManualModal(false)}
+      >
+        <View style={manualStyles.overlay}>
+          <View style={manualStyles.card}>
+            <View style={manualStyles.header}>
+              <Text style={manualStyles.title}>Add Member Manually</Text>
+              <TouchableOpacity
+                onPress={() => setShowManualModal(false)}
+                style={manualStyles.closeBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color={COLORS.text.secondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={manualStyles.fieldLabel}>Display Name *</Text>
+            <TextInput
+              style={manualStyles.input}
+              placeholder="e.g. Alice"
+              placeholderTextColor={COLORS.text.tertiary}
+              value={manualName}
+              onChangeText={setManualName}
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={20}
+              autoFocus
+            />
+
+            <Text style={manualStyles.fieldLabel}>Wallet Address (optional)</Text>
+            <TextInput
+              style={[manualStyles.input, manualWalletError ? manualStyles.inputError : null]}
+              placeholder="Solana public key"
+              placeholderTextColor={COLORS.text.tertiary}
+              value={manualWallet}
+              onChangeText={setManualWallet}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {manualWalletError && (
+              <Text style={manualStyles.fieldError}>{manualWalletError}</Text>
+            )}
+
+            <Button
+              title="Add to Group"
+              onPress={handleAddManual}
+              disabled={!canAddManual}
+              size="lg"
+              style={manualStyles.addBtn}
+            />
+            <TouchableOpacity
+              onPress={() => setShowManualModal(false)}
+              style={manualStyles.cancelWrap}
+              activeOpacity={0.7}
+            >
+              <Text style={manualStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Member Picker Modal */}
@@ -778,6 +879,83 @@ const pickerStyles = StyleSheet.create({
     width: '100%',
   },
   cancelWrap: {
+    paddingVertical: SPACING.sm,
+  },
+  cancelText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.md,
+    fontWeight: FONT.weight.medium,
+  },
+});
+
+/* ── Manual Add Modal Styles ── */
+const manualStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  card: {
+    backgroundColor: COLORS.bg.secondary,
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.xxl,
+    width: '100%',
+    gap: SPACING.xs,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  title: {
+    fontSize: FONT.size.xl,
+    fontWeight: FONT.weight.bold,
+    color: COLORS.text.primary,
+  },
+  closeBtn: {
+    position: 'absolute',
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.bg.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldLabel: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+    marginTop: SPACING.sm,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: COLORS.bg.tertiary,
+    borderWidth: 1,
+    borderColor: COLORS.border.default,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 14,
+    fontSize: FONT.size.md,
+    color: COLORS.text.primary,
+  },
+  inputError: {
+    borderColor: COLORS.bg.danger,
+  },
+  fieldError: {
+    color: COLORS.bg.danger,
+    fontSize: FONT.size.xs,
+    marginTop: 2,
+  },
+  addBtn: {
+    marginTop: SPACING.lg,
+  },
+  cancelWrap: {
+    alignItems: 'center',
     paddingVertical: SPACING.sm,
   },
   cancelText: {

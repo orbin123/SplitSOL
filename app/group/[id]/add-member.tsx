@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -19,8 +21,12 @@ import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QRScanner } from '@/components/ui/QRScanner';
 import { SplitSolQrPayload } from '@/utils/memberQr';
+import { isValidWalletAddress } from '@/utils/memberQr';
 import { COLORS, SPACING, FONT, RADIUS } from '@/utils/constants';
+import { truncateAddress } from '@/utils/formatters';
 import { showAlert } from '@/store/useAlertStore';
+
+type Mode = 'list' | 'manual';
 
 export default function AddMember() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,8 +37,14 @@ export default function AddMember() {
   const addMember = useAppStore((s) => s.addMember);
   const addGroupMember = useAppStore((s) => s.addGroupMember);
   const user = useAppStore((s) => s.user);
+
+  const [mode, setMode] = useState<Mode>('list');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [scannerVisible, setScannerVisible] = useState(false);
+
+  // Manual entry state
+  const [manualName, setManualName] = useState('');
+  const [manualWallet, setManualWallet] = useState('');
 
   if (!group) {
     return (
@@ -44,229 +56,336 @@ export default function AddMember() {
 
   const existingWallets = new Set(
     group.members
-      .map((member) => member.walletAddress)
-      .filter((wallet): wallet is string => Boolean(wallet)),
+      .map((m) => m.walletAddress)
+      .filter((w): w is string => Boolean(w)),
   );
   const existingMemberIds = new Set(
     group.members
-      .map((member) => member.memberId)
-      .filter((memberId): memberId is string => Boolean(memberId)),
+      .map((m) => m.memberId)
+      .filter((mid): mid is string => Boolean(mid)),
   );
 
-  const availableMembers = useMemo(() => {
-    return [...members]
-      .filter(
-        (member) =>
-          !existingMemberIds.has(member.id) &&
-          !existingWallets.has(member.walletAddress),
-      )
-      .sort((a, b) => {
-        if (a.isFavorite !== b.isFavorite) {
-          return a.isFavorite ? -1 : 1;
-        }
-
-        return a.name.localeCompare(b.name);
-      });
-  }, [members, existingMemberIds, existingWallets]);
+  const availableMembers = useMemo(
+    () =>
+      [...members]
+        .filter(
+          (m) =>
+            !existingMemberIds.has(m.id) && !existingWallets.has(m.walletAddress),
+        )
+        .sort((a, b) => {
+          if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        }),
+    [members, existingMemberIds, existingWallets],
+  );
 
   const toggleSelectedMember = (memberId: string) => {
-    setSelectedMemberIds((current) =>
-      current.includes(memberId)
-        ? current.filter((id) => id !== memberId)
-        : [...current, memberId],
+    setSelectedMemberIds((cur) =>
+      cur.includes(memberId) ? cur.filter((x) => x !== memberId) : [...cur, memberId],
     );
   };
 
   const handleAddSelected = () => {
     if (selectedMemberIds.length === 0) return;
-
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
     selectedMemberIds.forEach((memberId) => {
-      const member = members.find((item) => item.id === memberId);
+      const member = members.find((m) => m.id === memberId);
       if (!member) return;
       addGroupMember(id, member.name, member.walletAddress, member.id);
     });
-
     router.back();
   };
 
+  // ── Manual entry ──────────────────────────────────────────────────────────
+  const trimmedName = manualName.trim();
+  const trimmedWallet = manualWallet.trim();
+
+  const walletError =
+    trimmedWallet && !isValidWalletAddress(trimmedWallet)
+      ? 'Invalid Solana address'
+      : trimmedWallet && existingWallets.has(trimmedWallet)
+        ? 'Already in this group'
+        : null;
+
+  const canAddManual = trimmedName.length > 0 && !walletError;
+
+  const handleAddManual = () => {
+    if (!canAddManual) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const wallet = trimmedWallet || null;
+    const memberId = addMember({ name: trimmedName, walletAddress: wallet, isFavorite: false });
+    addGroupMember(id, trimmedName, wallet, memberId);
+    setManualName('');
+    setManualWallet('');
+    setMode('list');
+    showAlert('Member Added', `${trimmedName} was added to the group.`, [
+      { text: 'OK', onPress: () => router.back() },
+    ]);
+  };
+
+  // ── QR scan ───────────────────────────────────────────────────────────────
   const handleScanMember = (payload: SplitSolQrPayload) => {
     if (payload.type !== 'member') {
       showAlert('Invalid QR Code', 'Please scan a valid SplitSOL member code.');
       return false;
     }
-
     if (payload.wallet === user.walletAddress) {
       showAlert("Can't add yourself", 'You are already in this group.');
       return false;
     }
-
     if (existingWallets.has(payload.wallet)) {
       showAlert('Already in group', `${payload.name} is already a member.`);
       return false;
     }
 
-    const existingMember = members.find(
-      (member) => member.walletAddress === payload.wallet,
-    );
+    const existing = members.find((m) => m.walletAddress === payload.wallet);
     const memberId =
-      existingMember?.id ??
-      addMember({
-        name: payload.name,
-        walletAddress: payload.wallet,
-        isFavorite: false,
-      });
+      existing?.id ??
+      addMember({ name: payload.name, walletAddress: payload.wallet, isFavorite: false });
 
     addGroupMember(id, payload.name, payload.wallet, memberId);
     setScannerVisible(false);
-    showAlert(
-      existingMember ? 'Member added' : 'Member added',
-      `${payload.name} was added to the group.`,
-      [{ text: 'OK', onPress: () => router.back() }],
-    );
+    showAlert('Member Added', `${payload.name} was added to the group.`, [
+      { text: 'OK', onPress: () => router.back() },
+    ]);
     return true;
   };
 
   return (
     <>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Member</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Card style={styles.formCard}>
-            <Text style={styles.cardTitle}>Add Members</Text>
-            <Text style={styles.cardSub}>
-              Choose from members or scan a new SplitSOL member.
-            </Text>
-
-            <Text style={styles.sectionTitle}>Current Members</Text>
-            <Text style={styles.sectionSub}>
-              {group.members.length} already in this group
-            </Text>
-            <View style={styles.existingList}>
-              {group.members.map((member) => (
-                <View key={member.id} style={styles.existingMember}>
-                  <Avatar name={member.name} size={36} />
-                  <View style={styles.memberCopy}>
-                    <Text style={styles.existingName}>{member.name}</Text>
-                    <Text style={styles.existingMeta}>
-                      {member.isCurrentUser ? 'You' : 'Current member'}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            <Button
-              title="Scan Member QR"
-              onPress={() => setScannerVisible(true)}
-              variant="secondary"
-              size="md"
-              icon={<Ionicons name="qr-code-outline" size={20} color={COLORS.bg.accent} />}
-              style={styles.scanBtn}
-            />
-          </Card>
-
-          {availableMembers.length > 0 && (
-            <>
-              <Text style={styles.recentsTitle}>Recents</Text>
-              <Text style={styles.recentsSub}>
-                Favorites are pinned to the top
-              </Text>
-              <View style={styles.memberList}>
-                {availableMembers.map((member) => {
-                  const isSelected = selectedMemberIds.includes(member.id);
-
-                  return (
-                    <TouchableOpacity
-                      key={member.id}
-                      style={[
-                        styles.memberRow,
-                        isSelected && styles.memberRowSelected,
-                      ]}
-                      activeOpacity={0.75}
-                      onPress={() => toggleSelectedMember(member.id)}
-                    >
-                      <Avatar name={member.name} size={44} />
-                      <View style={styles.memberCopy}>
-                        <View style={styles.memberNameRow}>
-                          <Text style={styles.existingName}>{member.name}</Text>
-                          {member.isFavorite && (
-                            <Text style={styles.favoriteBadge}>Favorite</Text>
-                          )}
-                        </View>
-                        <Text style={styles.existingMeta}>{member.walletAddress}</Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.checkbox,
-                          isSelected && styles.checkboxSelected,
-                        ]}
-                      >
-                        {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </>
-          )}
-
-          {availableMembers.length === 0 && (
-            <Card style={styles.emptyCard}>
-              <EmptyState
-                emoji="➕"
-                title="No available members"
-                subtitle="Everyone in your member list is already in this group, or you need to scan someone new."
-                action={
-                  <Button
-                    title="Scan New Member"
-                    onPress={() => setScannerVisible(true)}
-                  />
-                }
-              />
-            </Card>
-          )}
-
-          <Button
-            title={
-              selectedMemberIds.length > 0
-                ? `Add ${selectedMemberIds.length} Member${selectedMemberIds.length === 1 ? '' : 's'}`
-                : 'Select Members to Add'
-            }
-            onPress={handleAddSelected}
-            disabled={selectedMemberIds.length === 0}
-            size="lg"
-            style={styles.addBtn}
-          />
-        </ScrollView>
-      </View>
-
-      <Modal
-        visible={scannerVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => (mode === 'manual' ? setMode('list') : router.back())}
+              style={styles.backBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>
+              {mode === 'manual' ? 'Add Manually' : 'Add Member'}
+            </Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          {/* Mode tabs */}
+          <View style={styles.modeTabs}>
+            <TouchableOpacity
+              style={[styles.modeTab, mode === 'list' && styles.modeTabActive]}
+              onPress={() => setMode('list')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="people-outline"
+                size={16}
+                color={mode === 'list' ? COLORS.bg.accent : COLORS.text.secondary}
+              />
+              <Text
+                style={[styles.modeTabText, mode === 'list' && styles.modeTabTextActive]}
+              >
+                Scan / Contacts
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeTab, mode === 'manual' && styles.modeTabActive]}
+              onPress={() => setMode('manual')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="pencil-outline"
+                size={16}
+                color={mode === 'manual' ? COLORS.bg.accent : COLORS.text.secondary}
+              />
+              <Text
+                style={[styles.modeTabText, mode === 'manual' && styles.modeTabTextActive]}
+              >
+                Add Manually
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {mode === 'manual' ? (
+              /* ── Manual entry form ──────────────────────────────────── */
+              <Card style={styles.formCard}>
+                <Text style={styles.cardTitle}>Add Member Manually</Text>
+                <Text style={styles.cardSub}>
+                  Name is required. Wallet address is optional — they can add it later.
+                </Text>
+
+                <Text style={styles.fieldLabel}>Display Name *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. Alice"
+                  placeholderTextColor={COLORS.text.tertiary}
+                  value={manualName}
+                  onChangeText={setManualName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={20}
+                  returnKeyType="next"
+                />
+
+                <Text style={styles.fieldLabel}>Wallet Address (optional)</Text>
+                <TextInput
+                  style={[styles.textInput, walletError ? styles.textInputError : null]}
+                  placeholder="Solana public key"
+                  placeholderTextColor={COLORS.text.tertiary}
+                  value={manualWallet}
+                  onChangeText={setManualWallet}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleAddManual}
+                />
+                {walletError && (
+                  <Text style={styles.fieldError}>{walletError}</Text>
+                )}
+
+                <Button
+                  title="Add to Group"
+                  onPress={handleAddManual}
+                  disabled={!canAddManual}
+                  size="lg"
+                  style={styles.addBtn}
+                />
+              </Card>
+            ) : (
+              /* ── Scan + contacts list ───────────────────────────────── */
+              <>
+                <Card style={styles.formCard}>
+                  <Text style={styles.cardTitle}>Add Members</Text>
+                  <Text style={styles.cardSub}>
+                    Scan a SplitSOL QR code or pick from your contacts.
+                  </Text>
+
+                  <Text style={styles.sectionTitle}>Current Members</Text>
+                  <Text style={styles.sectionSub}>
+                    {group.members.length} already in this group
+                  </Text>
+                  <View style={styles.existingList}>
+                    {group.members.map((member) => (
+                      <View key={member.id} style={styles.existingMember}>
+                        <Avatar name={member.name} size={36} />
+                        <View style={styles.memberCopy}>
+                          <Text style={styles.existingName}>{member.name}</Text>
+                          <Text style={styles.existingMeta}>
+                            {member.isCurrentUser
+                              ? 'You'
+                              : member.walletAddress
+                                ? truncateAddress(member.walletAddress, 4)
+                                : 'No wallet'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Button
+                    title="Scan QR Code"
+                    onPress={() => setScannerVisible(true)}
+                    variant="secondary"
+                    size="md"
+                    icon={
+                      <Ionicons
+                        name="qr-code-outline"
+                        size={20}
+                        color={COLORS.bg.accent}
+                      />
+                    }
+                    style={styles.scanBtn}
+                  />
+                </Card>
+
+                {availableMembers.length > 0 ? (
+                  <>
+                    <Text style={styles.recentsTitle}>Your Contacts</Text>
+                    <Text style={styles.recentsSub}>Favorites pinned to the top</Text>
+                    <View style={styles.memberList}>
+                      {availableMembers.map((member) => {
+                        const isSelected = selectedMemberIds.includes(member.id);
+                        return (
+                          <TouchableOpacity
+                            key={member.id}
+                            style={[
+                              styles.memberRow,
+                              isSelected && styles.memberRowSelected,
+                            ]}
+                            activeOpacity={0.75}
+                            onPress={() => toggleSelectedMember(member.id)}
+                          >
+                            <Avatar name={member.name} size={44} />
+                            <View style={styles.memberCopy}>
+                              <View style={styles.memberNameRow}>
+                                <Text style={styles.existingName}>{member.name}</Text>
+                                {member.isFavorite && (
+                                  <Text style={styles.favoriteBadge}>Favorite</Text>
+                                )}
+                              </View>
+                              {member.walletAddress ? (
+                                <View style={styles.walletRow}>
+                                  <View style={styles.walletDot} />
+                                  <Text style={styles.existingMeta}>
+                                    {truncateAddress(member.walletAddress, 4)}
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.existingMeta}>No wallet</Text>
+                              )}
+                            </View>
+                            <View
+                              style={[
+                                styles.checkbox,
+                                isSelected && styles.checkboxSelected,
+                              ]}
+                            >
+                              {isSelected && (
+                                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : (
+                  <Card style={styles.emptyCard}>
+                    <EmptyState
+                      emoji="➕"
+                      title="No contacts available"
+                      subtitle="Scan a QR code to add someone new, or switch to Add Manually."
+                    />
+                  </Card>
+                )}
+
+                {selectedMemberIds.length > 0 && (
+                  <Button
+                    title={`Add ${selectedMemberIds.length} Member${selectedMemberIds.length === 1 ? '' : 's'}`}
+                    onPress={handleAddSelected}
+                    size="lg"
+                    style={styles.addBtn}
+                  />
+                )}
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+
+      <Modal visible={scannerVisible} animationType="slide" presentationStyle="fullScreen">
         <QRScanner
           onScan={handleScanMember}
           onClose={() => setScannerVisible(false)}
-          hint="Scan a SplitSOL member to add them to this group"
+          hint="Scan a SplitSOL member QR code"
         />
       </Modal>
     </>
@@ -307,6 +426,43 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 36,
   },
+
+  // Mode tabs
+  modeTabs: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.xxl,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.bg.tertiary,
+    borderRadius: RADIUS.lg,
+    padding: 4,
+    gap: 4,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: RADIUS.md,
+  },
+  modeTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  modeTabText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+  },
+  modeTabTextActive: {
+    color: COLORS.bg.accent,
+  },
+
   content: {
     padding: SPACING.xxl,
     paddingBottom: SPACING.xxxl,
@@ -359,6 +515,18 @@ const styles = StyleSheet.create({
     fontSize: FONT.size.sm,
     marginTop: 2,
   },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  walletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.bg.success,
+  },
   scanBtn: {
     alignSelf: 'stretch',
     marginTop: SPACING.sm,
@@ -391,6 +559,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.bg.accent,
     backgroundColor: COLORS.bg.accentSoft,
   },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  favoriteBadge: {
+    color: COLORS.text.accent,
+    fontSize: FONT.size.xs,
+    fontWeight: FONT.weight.semibold,
+  },
   checkbox: {
     width: 24,
     height: 24,
@@ -405,25 +583,38 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg.accent,
     borderColor: COLORS.bg.accent,
   },
-  checkboxTick: {
-    color: COLORS.text.white,
-    fontSize: FONT.size.sm,
-    fontWeight: FONT.weight.bold,
-  },
-  memberNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  favoriteBadge: {
-    color: COLORS.text.accent,
-    fontSize: FONT.size.xs,
-    fontWeight: FONT.weight.semibold,
-  },
   emptyCard: {
-    minHeight: 220,
+    minHeight: 200,
     justifyContent: 'center',
   },
+
+  // Manual form
+  fieldLabel: {
+    color: COLORS.text.primary,
+    fontSize: FONT.size.sm,
+    fontWeight: FONT.weight.semibold,
+    marginTop: SPACING.sm,
+    marginBottom: 6,
+  },
+  textInput: {
+    backgroundColor: COLORS.bg.tertiary,
+    borderWidth: 1,
+    borderColor: COLORS.border.default,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 14,
+    fontSize: FONT.size.md,
+    color: COLORS.text.primary,
+  },
+  textInputError: {
+    borderColor: COLORS.bg.danger,
+  },
+  fieldError: {
+    color: COLORS.bg.danger,
+    fontSize: FONT.size.xs,
+    marginTop: 4,
+  },
+
   addBtn: {
     marginTop: SPACING.sm,
   },

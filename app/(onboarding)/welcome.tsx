@@ -166,7 +166,7 @@ export default function Welcome() {
         <View style={[styles.bottomBlock, { paddingBottom: insets.bottom + 32 }]}>
           <View style={styles.buttonWrap}>
             <Button
-              title="Get Started"
+              title="Connect Wallet"
               onPress={() => router.push('/(onboarding)/connect' as any)}
               variant="primary"
               size="lg"

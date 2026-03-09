@@ -174,13 +174,33 @@ export default function Profile() {
               {walletAddress ? truncateAddress(walletAddress, 8) : 'Not connected'}
             </Text>
 
-            {walletAddress && memberQrValue && QRCode && (
+            {walletAddress && (
               <TouchableOpacity
-                style={styles.qrIconBtn}
-                onPress={() => setShowQrModal(true)}
+                style={styles.copyAddressBtn}
+                onPress={async () => {
+                  await Clipboard.setStringAsync(walletAddress);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
                 activeOpacity={0.7}
               >
-                <Ionicons name="qr-code-outline" size={20} color="#374151" />
+                <Ionicons name="copy-outline" size={14} color={COLORS.bg.accent} />
+                <Text style={styles.copyAddressText}>Copy Address</Text>
+              </TouchableOpacity>
+            )}
+
+            {walletAddress && memberQrValue && QRCode && (
+              <TouchableOpacity
+                style={styles.qrWrap}
+                onPress={() => setShowQrModal(true)}
+                activeOpacity={0.85}
+              >
+                <QRCode
+                  value={memberQrValue}
+                  size={140}
+                  color={COLORS.text.primary}
+                  backgroundColor="transparent"
+                />
+                <Text style={styles.qrTapHint}>Tap to enlarge</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -508,13 +528,34 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 16,
   },
-  qrIconBtn: {
-    backgroundColor: '#F3F4F6',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  copyAddressBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.bg.accentSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginBottom: 20,
+  },
+  copyAddressText: {
+    color: COLORS.bg.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  qrWrap: {
+    alignItems: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  qrTapHint: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   editNameRow: {
     flexDirection: 'row',

@@ -59,6 +59,10 @@ export const parseMemberQrPayload = (
   return parsed?.type === 'member' ? parsed : null;
 };
 
+// Spec-named aliases
+export const encodeMemberQR = buildMemberQrPayload;
+export const decodeMemberQR = parseMemberQrPayload;
+
 export const parseSplitSolQrPayload = (
   rawValue: string,
 ): SplitSolQrPayload | null => {

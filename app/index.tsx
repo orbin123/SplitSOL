@@ -57,7 +57,7 @@ export default function Index() {
   }
 
   if (!user.walletAddress) return <Redirect href="/(onboarding)/welcome" />;
-  if (!user.name) return <Redirect href={'/(onboarding)/connect' as any} />;
+  if (!user.name) return <Redirect href="/(onboarding)/username" />;
   return <Redirect href="/(tabs)/home" />;
 }
 

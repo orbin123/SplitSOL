@@ -20,7 +20,6 @@ import {
   SHADOWS,
 } from '@/utils/constants';
 import { Group } from '@/types';
-import { seedMockData, clearMockData } from '@/utils/seedMockData';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -134,25 +133,6 @@ export default function Home() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 🌱 DEV SEED BANNER — delete when done designing ─────── */}
-        <View style={styles.devBanner}>
-          <Text style={styles.devLabel}>🌱 Design Mode</Text>
-          <TouchableOpacity
-            style={styles.devBtn}
-            onPress={() => seedMockData()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.devBtnText}>Seed Data</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.devBtn, styles.devBtnDanger]}
-            onPress={() => clearMockData()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.devBtnText}>Clear</Text>
-          </TouchableOpacity>
-        </View>
-        {/* ─────────────────────────────────────────────────────────── */}
         <View style={styles.header}>
           <Text style={styles.greetingHeader}>
             {getGreeting()} {user.name || 'Friend'}
@@ -555,35 +535,5 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 8,
     zIndex: 20,
-  },
-  devBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-    gap: 8,
-  },
-  devLabel: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-  },
-  devBtn: {
-    backgroundColor: '#10B981',
-    borderRadius: 10,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  devBtnDanger: {
-    backgroundColor: '#EF4444',
-  },
-  devBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
   },
 });
