@@ -150,7 +150,6 @@ SplitSOL is not just another IOU tracker. It combines consumer-friendly bill spl
 This project is private unless the repository owner decides otherwise.
 
 
-![WhatsApp Image 2026-03-09 at 23 05 32](https://github.com/user-attachments/assets/e77e598f-f798-49c1-86b3-35ef3f30e58e) ![WhatsApp Image 2026-03-09 at 23 05 33](https://github.com/user-attachments/assets/4f6f5b18-7a72-4703-8493-6f921f0e1c9d)
 
 
 
