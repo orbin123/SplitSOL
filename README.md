@@ -4,6 +4,9 @@ SplitSOL is a mobile-first group expense app for Solana. It lets friends split s
 
 Built with Expo, React Native, Expo Router, and Zustand.
 
+![splitsol](https://github.com/user-attachments/assets/3ac95f72-9f0d-40c4-ae07-9a8ab5e0bfae)
+
+
 ## Why SplitSOL
 
 Traditional split-bill apps stop at bookkeeping. SplitSOL closes the loop:
